@@ -28,24 +28,25 @@ Two signature analyses, plus the guarded reads and writes around them:
 ## What works
 
 - **CLI** (`endpoint-aiops ...`): `init`, `overview`, `endpoint list/get/assign-profile/reboot`, `session list/storm`, `drift report/patch`, `secret set/list/rm/migrate/rotate-password`, `doctor`, `mcp`.
-- **MCP server** (`endpoint-aiops mcp` or `endpoint-aiops-mcp`): **9 tools** (7 read, 2 write), every one wrapped with the bundled `@governed_tool` harness.
+- **MCP server** (`endpoint-aiops mcp` or `endpoint-aiops-mcp`): **10 tools** (8 read, 2 write), every one wrapped with the bundled `@governed_tool` harness.
 - **Encrypted credentials**: the management-server API key lives in an encrypted store `~/.endpoint-aiops/secrets.enc` (Fernet + scrypt) — **never plaintext on disk**. Unlock with a master password from `ENDPOINT_AIOPS_MASTER_PASSWORD` (MCP/CI) or an interactive prompt (CLI).
 - **Reversibility**: `endpoint_assign_profile` (`high` risk) captures the prior profile and records an inverse "reassign the prior profile" undo descriptor. `endpoint_reboot` (`medium` risk) captures the prior online state for the audit record but declares no undo (a reboot has no safe inverse).
 - **Safety**: state-changing CLI ops (`endpoint assign-profile`, `endpoint reboot`) require double confirmation and support `--dry-run`.
 
-## Capability matrix (9 MCP tools)
+## Capability matrix (10 MCP tools)
 
 | Category | Tools | Count | R/W |
 |----------|-------|:-----:|:---:|
 | **Overview** | `overview` | 1 | read |
-| **Inventory** | `endpoint_list`, `endpoint_get` | 2 | read |
+| **Inventory** | `endpoint_list`, `endpoint_get`, `endpoint_health_score` | 3 | read |
 | **Sessions** | `session_list`, `login_storm_analysis` | 2 | read |
 | **Drift** | `drift_report`, `patch_status` | 2 | read |
 | **Remediation** | `endpoint_assign_profile` | 1 | write (high) |
 | | `endpoint_reboot` | 1 | write (medium) |
 
-The analysis tools (`login_storm_analysis`, `drift_report`, `patch_status`)
-accept injected records for pure/offline analysis, or pull live from a
+The analysis tools (`login_storm_analysis`, `drift_report`, `patch_status`,
+`endpoint_health_score`) accept injected records for pure/offline analysis;
+`endpoint_health_score` is injected-only, the others also pull live from a
 configured target.
 
 ## Quick start
