@@ -1,9 +1,9 @@
 # endpoint-aiops capabilities
 
-> Preview / mock-only. 10 MCP tools (8 read, 2 write). REST paths modelled
+> Preview / mock-only. 11 MCP tools (9 read, 2 write). REST paths modelled
 > generically against an endpoint-management API; need live verification.
 
-## Read tools (8)
+## Read tools (9)
 
 | Tool | REST (preview) | Returns |
 |------|----------------|---------|
@@ -15,11 +15,13 @@
 | `login_storm_analysis` | `GET /sessions` or injected | stormCount, storms[], slowestByLogin[], slowestByBoot[], slowLoginCount, failedLogins, thresholds |
 | `drift_report` | `GET /endpoints` or injected | baseline, driftByField, driftedEndpoints[], drifted/compliant counts |
 | `patch_status` | `GET /endpoints` or injected | targetPatch, distribution, behind[], behindCount |
+| `patch_compliance` | injected only | endpointsEvaluated, targetPatch, targetSource, slaTargetPct, complianceRatePct, compliantCount, verdict, nonCompliant[], note |
 
 The analysis tools accept an injected `sessions=` / `endpoints=` list for
 pure/offline analysis. `login_storm_analysis`, `drift_report` and `patch_status`
-also pull live from a configured `target`; `endpoint_health_score` is
-injected-only (it scores rows you already hold, e.g. from `endpoint_list`).
+also pull live from a configured `target`; `endpoint_health_score` and
+`patch_compliance` are injected-only (they score rows you already hold, e.g.
+from `endpoint_list`).
 
 ## Write tools (2)
 
