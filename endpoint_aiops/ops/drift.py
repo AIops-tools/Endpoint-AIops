@@ -121,3 +121,45 @@ def patch_status(endpoints: list[dict], target_patch: str | None = None) -> dict
         "behind": behind[:MAX_ROWS],
         "truncated": len(behind) > MAX_ROWS,
     }
+
+
+def patch_compliance(
+    endpoints: list[dict],
+    target_patch: str | None = None,
+    sla_pct: float = 95.0,
+) -> dict:
+    """[READ] Patch-compliance SLA measure: % of the fleet on the target level.
+
+    The SLA/compliance companion to ``patch_status``: instead of the patch-level
+    *distribution*, it answers "what fraction of the fleet is on the target
+    patch, and does that meet the SLA?" ``target_patch`` is the desired level;
+    with none, the fleet-majority level is used. A compliant endpoint is an exact
+    string match on ``patchLevel`` — a transparent check, not a version-semantics
+    parser. Compliance rate is compliant / evaluated x 100 (0.0 on an empty
+    fleet). Verdict is ``meets_sla`` when the rate >= ``sla_pct``, ``below_sla``
+    otherwise, and ``insufficient`` for an empty fleet.
+    """
+    rows = list(endpoints or [])
+    target = target_patch or _majority(rows, "patchLevel")
+    non_compliant = [
+        {"endpoint": r.get("hostname") or r.get("id"), "patchLevel": r.get("patchLevel") or None}
+        for r in rows
+        if (r.get("patchLevel") or None) != target
+    ]
+    compliant_count = len(rows) - len(non_compliant)
+    rate = (compliant_count / len(rows) * 100) if rows else 0.0
+    verdict = "insufficient" if not rows else ("meets_sla" if rate >= sla_pct else "below_sla")
+    return {
+        "endpointsEvaluated": len(rows),
+        "targetPatch": target,
+        "targetSource": "provided" if target_patch else "fleet-majority",
+        "slaTargetPct": sla_pct,
+        "complianceRatePct": round(rate, 2),
+        "compliantCount": compliant_count,
+        "verdict": verdict,
+        "nonCompliant": non_compliant[:MAX_ROWS],
+        "note": (
+            "Advisory read-only SLA check: compliance is an exact-match on "
+            "patchLevel against the target, not a version-semantics comparison."
+        ),
+    }
