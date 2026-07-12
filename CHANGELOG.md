@@ -3,6 +3,18 @@
 All notable changes to endpoint-aiops are documented here. This project adheres
 to [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **`endpoint_health_score`** (read, low) — a composite per-endpoint health/risk
+  score (0-100). Pure analysis over injected inventory rows: it folds the fleet
+  signals already known (offline, stale, patch-behind, agent-behind) into one
+  ranked "which endpoints are worst?" view, deducting points per risk signal and
+  citing every deduction in the endpoint's `reasons`. Baseline is provided or
+  derived by fleet majority; scores map to bands (healthy ≥80, degraded 50-79,
+  critical <50). Brings the MCP tool count to **10** (8 read, 2 write).
+
 ## [0.1.0] — preview
 
 Initial preview release: governed AI-ops for managed-endpoint fleets (thin

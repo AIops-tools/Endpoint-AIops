@@ -17,7 +17,7 @@ from typer.testing import CliRunner
 
 EXPECTED_TOOLS = {
     # inventory
-    "overview", "endpoint_list", "endpoint_get",
+    "overview", "endpoint_list", "endpoint_get", "endpoint_health_score",
     # sessions
     "session_list", "login_storm_analysis",
     # drift

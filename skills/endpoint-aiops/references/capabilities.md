@@ -1,22 +1,25 @@
 # endpoint-aiops capabilities
 
-> Preview / mock-only. 9 MCP tools (7 read, 2 write). REST paths modelled
+> Preview / mock-only. 10 MCP tools (8 read, 2 write). REST paths modelled
 > generically against an endpoint-management API; need live verification.
 
-## Read tools (7)
+## Read tools (8)
 
 | Tool | REST (preview) | Returns |
 |------|----------------|---------|
 | `overview` | `GET /endpoints` (fold) | total, online, offline, stale[], agentVersionSpread, patchLevelSpread |
 | `endpoint_list` | `GET /endpoints` | id, hostname, os, osBuild, agentVersion, patchLevel, profileId, online, lastSeenHours |
 | `endpoint_get` | `GET /endpoints/{id}` | single endpoint detail (normalised) |
+| `endpoint_health_score` | injected only | endpointsEvaluated, baseline{agentVersion,patchLevel,source}, summary{healthy,degraded,critical}, worst[]{endpoint,score,band,reasons[]}, note |
 | `session_list` | `GET /sessions?since_hours=` | endpoint, user, loginMs, bootMs, timestamp, result |
 | `login_storm_analysis` | `GET /sessions` or injected | stormCount, storms[], slowestByLogin[], slowestByBoot[], slowLoginCount, failedLogins, thresholds |
 | `drift_report` | `GET /endpoints` or injected | baseline, driftByField, driftedEndpoints[], drifted/compliant counts |
 | `patch_status` | `GET /endpoints` or injected | targetPatch, distribution, behind[], behindCount |
 
-The three analysis tools accept an injected `sessions=` / `endpoints=` list for
-pure/offline analysis, or pull live from a configured `target`.
+The analysis tools accept an injected `sessions=` / `endpoints=` list for
+pure/offline analysis. `login_storm_analysis`, `drift_report` and `patch_status`
+also pull live from a configured `target`; `endpoint_health_score` is
+injected-only (it scores rows you already hold, e.g. from `endpoint_list`).
 
 ## Write tools (2)
 
