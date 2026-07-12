@@ -63,3 +63,33 @@ def patch_status(
     if endpoints is None:
         endpoints = inv.list_endpoints(_get_connection(target))
     return ops.patch_status(endpoints, target_patch=target_patch)
+
+
+@mcp.tool()
+@governed_tool(risk_level="low")
+@tool_errors("dict")
+def patch_compliance(
+    endpoints: list[dict[str, Any]],
+    target_patch: Optional[str] = None,
+    sla_pct: float = 95.0,
+) -> dict:
+    """[READ] Patch-compliance SLA measure: % of the fleet on the target patch level.
+
+    Reframes patch_status (the patch-level distribution) as an SLA/compliance
+    verdict: what fraction of the fleet is on the target level, whether that meets
+    the SLA, and which endpoints are non-compliant. Compliance is an exact string
+    match on patchLevel — a transparent check, not a version-semantics parser.
+    Injected-only: pass 'endpoints' (inventory rows); no live collection.
+
+    Args:
+        endpoints: Injected inventory rows to evaluate (e.g. from endpoint_list).
+        target_patch: Desired patch level; omit to use the fleet-majority level.
+        sla_pct: Compliance SLA threshold percent; default 95.0.
+
+    Returns dict: {endpointsEvaluated, targetPatch, targetSource, slaTargetPct,
+        complianceRatePct, compliantCount, verdict, nonCompliant[], note}.
+
+    Example: patch_compliance(endpoints=[{"hostname":"tc01","patchLevel":"2026-06"},
+        {"hostname":"tc02","patchLevel":"2026-05"}], target_patch="2026-06").
+    """
+    return ops.patch_compliance(endpoints, target_patch=target_patch, sla_pct=sla_pct)

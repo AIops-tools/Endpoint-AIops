@@ -27,7 +27,7 @@ compatibility: >
 
 > **Disclaimer**: Community-maintained open-source project, **not affiliated with, endorsed by, or sponsored by any endpoint-management vendor.** Product and trademark names belong to their owners. Source at [github.com/AIops-tools/Endpoint-AIops](https://github.com/AIops-tools/Endpoint-AIops) under the MIT license.
 
-Governed managed-endpoint operations — **10 MCP tools**, every one wrapped with the bundled `@governed_tool` harness: a local unified audit log under `~/.endpoint-aiops/`, policy engine, token/runaway budget guard, undo-token recording, and graduated-autonomy risk tiers. The management-server API key is stored **encrypted** (`~/.endpoint-aiops/secrets.enc`, Fernet + scrypt) — never plaintext on disk.
+Governed managed-endpoint operations — **11 MCP tools**, every one wrapped with the bundled `@governed_tool` harness: a local unified audit log under `~/.endpoint-aiops/`, policy engine, token/runaway budget guard, undo-token recording, and graduated-autonomy risk tiers. The management-server API key is stored **encrypted** (`~/.endpoint-aiops/secrets.enc`, Fernet + scrypt) — never plaintext on disk.
 
 > **Standalone**: the governance harness is bundled in the package (`endpoint_aiops.governance`) — endpoint-aiops has no external skill-family dependency. **Preview / mock-only**: not yet validated against a live management server.
 
@@ -38,11 +38,11 @@ Governed managed-endpoint operations — **10 MCP tools**, every one wrapped wit
 | **Overview** | fleet health overview | 1 | 1 read |
 | **Inventory** | endpoint list, get, health score | 3 | 3 read |
 | **Sessions** | session list, login-storm analysis | 2 | 2 read |
-| **Drift** | drift report, patch status | 2 | 2 read |
+| **Drift** | drift report, patch status, patch compliance | 3 | 3 read |
 | **Remediation** | assign profile (high) | 1 | 1 write |
 | | reboot (medium) | 1 | 1 write |
 
-The analysis tools (`login_storm_analysis`, `drift_report`, `patch_status`, `endpoint_health_score`) accept injected records for pure/offline analysis; `endpoint_health_score` is injected-only, the others also pull live from a configured target.
+The analysis tools (`login_storm_analysis`, `drift_report`, `patch_status`, `patch_compliance`, `endpoint_health_score`) accept injected records for pure/offline analysis; `endpoint_health_score` and `patch_compliance` are injected-only, the others also pull live from a configured target.
 
 ## Quick Install
 

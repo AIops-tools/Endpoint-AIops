@@ -21,7 +21,7 @@ EXPECTED_TOOLS = {
     # sessions
     "session_list", "login_storm_analysis",
     # drift
-    "drift_report", "patch_status",
+    "drift_report", "patch_status", "patch_compliance",
     # remediation (writes)
     "endpoint_assign_profile", "endpoint_reboot",
 }

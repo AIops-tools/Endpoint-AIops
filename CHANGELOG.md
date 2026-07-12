@@ -14,6 +14,13 @@ to [Semantic Versioning](https://semver.org/).
   citing every deduction in the endpoint's `reasons`. Baseline is provided or
   derived by fleet majority; scores map to bands (healthy ≥80, degraded 50-79,
   critical <50). Brings the MCP tool count to **10** (8 read, 2 write).
+- **`patch_compliance`** (read, low) — the SLA/compliance companion to
+  `patch_status`. Pure analysis over injected inventory rows: instead of the
+  patch-level distribution it reports what fraction of the fleet is on the target
+  patch level (exact-match on `patchLevel`, fleet-majority derived when no target
+  is given), whether that meets the SLA (`meets_sla` / `below_sla` /
+  `insufficient` for an empty fleet), and which endpoints are non-compliant.
+  Advisory only. Brings the MCP tool count to **11** (9 read, 2 write).
 
 ## [0.1.0] — preview
 
