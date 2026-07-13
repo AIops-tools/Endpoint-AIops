@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from endpoint_aiops.ops._util import dialect_of
 from endpoint_aiops.ops.inventory import get_endpoint
 
 
@@ -29,7 +30,7 @@ def assign_profile(conn: Any, endpoint_id: str, profile_id: str) -> dict:
     (drives undo + audit); then POSTs the reassignment.
     """
     prior = get_endpoint(conn, endpoint_id)
-    conn.post(f"/endpoints/{endpoint_id}/profile", json={"profile_id": profile_id})
+    conn.post(dialect_of(conn).profile_path.format(id=endpoint_id), json={"profile_id": profile_id})
     return {
         "action": "assign_profile",
         "endpointId": endpoint_id,
@@ -45,7 +46,7 @@ def reboot_endpoint(conn: Any, endpoint_id: str) -> dict:
     audit but the tool intentionally offers no undo descriptor.
     """
     prior = get_endpoint(conn, endpoint_id)
-    conn.post(f"/endpoints/{endpoint_id}/reboot")
+    conn.post(dialect_of(conn).reboot_path.format(id=endpoint_id))
     return {
         "action": "reboot_endpoint",
         "endpointId": endpoint_id,

@@ -15,10 +15,14 @@ import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import yaml
 
 from endpoint_aiops.secretstore import SecretStoreError, get_secret, has_store
+
+if TYPE_CHECKING:
+    from endpoint_aiops.dialect import Dialect
 
 CONFIG_DIR = Path.home() / ".endpoint-aiops"
 CONFIG_FILE = CONFIG_DIR / "config.yaml"
@@ -74,6 +78,9 @@ class TargetConfig:
     port: int = 443
     verify_ssl: bool = True
     api_path: str = DEFAULT_API_PATH
+    # Optional per-target management-server dialect (resource paths + field
+    # aliases). None = the built-in generic shape. See endpoint_aiops.dialect.
+    dialect: dict | None = None
 
     @property
     def api_key(self) -> str:
@@ -82,6 +89,13 @@ class TargetConfig:
     @property
     def base_url(self) -> str:
         return f"https://{self.host}:{self.port}{self.api_path}"
+
+    @property
+    def dialect_obj(self) -> Dialect:
+        """Resolved Dialect for this target (generic default when unset)."""
+        from endpoint_aiops.dialect import resolve
+
+        return resolve(self.dialect)
 
 
 @dataclass(frozen=True)
@@ -124,6 +138,7 @@ def load_config(config_path: Path | None = None) -> AppConfig:
             port=t.get("port", 443),
             verify_ssl=t.get("verify_ssl", True),
             api_path=t.get("api_path", DEFAULT_API_PATH),
+            dialect=t.get("dialect"),
         )
         for t in raw.get("targets", [])
     )
