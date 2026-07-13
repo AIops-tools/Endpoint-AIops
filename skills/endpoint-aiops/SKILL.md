@@ -94,6 +94,7 @@ Pass records straight to the analysis tools — `login_storm_analysis(sessions=[
 
 - Every tool is audited to `~/.endpoint-aiops/audit.db` (relocatable via `ENDPOINT_AIOPS_HOME`).
 - High-risk ops can require a named approver: set `ENDPOINT_AUDIT_APPROVED_BY` and `ENDPOINT_AUDIT_RATIONALE`.
+- **Secure by default (v0.2.0+)**: with no `~/.endpoint-aiops/rules.yaml`, high/critical operations are denied unless `ENDPOINT_AUDIT_APPROVED_BY` names an approver (set `ENDPOINT_AUDIT_RATIONALE` too). `endpoint-aiops init` seeds a starter rules.yaml; an operator-authored rules file is honoured as-is.
 - Writes support `--dry-run` and double confirmation at the CLI.
 - Reversible writes record an inverse descriptor; the reboot (no safe inverse) records only the before-state.
 
