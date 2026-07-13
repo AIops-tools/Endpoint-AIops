@@ -55,7 +55,7 @@ def endpoint_assign_profile(
     dry_run: DryRunOption = False,
 ) -> None:
     """Assign a config profile to an endpoint (reversible; dry-run + confirm)."""
-    from endpoint_aiops.ops import remediation as ops
+    from mcp_server.tools import remediation as gov
 
     if dry_run:
         dry_run_print(
@@ -65,8 +65,13 @@ def endpoint_assign_profile(
         )
         return
     double_confirm(f"assign profile '{profile_id}' to", endpoint_id)
-    conn, _ = get_connection(target)
-    console.print_json(json.dumps(ops.assign_profile(conn, endpoint_id, profile_id)))
+    console.print_json(
+        json.dumps(
+            gov.endpoint_assign_profile(
+                endpoint_id=endpoint_id, profile_id=profile_id, target=target
+            )
+        )
+    )
 
 
 @endpoint_app.command("reboot")
@@ -77,7 +82,7 @@ def endpoint_reboot(
     dry_run: DryRunOption = False,
 ) -> None:
     """Request an endpoint reboot (no undo; dry-run + confirm)."""
-    from endpoint_aiops.ops import remediation as ops
+    from mcp_server.tools import remediation as gov
 
     if dry_run:
         dry_run_print(
@@ -86,5 +91,4 @@ def endpoint_reboot(
         )
         return
     double_confirm("reboot", endpoint_id)
-    conn, _ = get_connection(target)
-    console.print_json(json.dumps(ops.reboot_endpoint(conn, endpoint_id)))
+    console.print_json(json.dumps(gov.endpoint_reboot(endpoint_id=endpoint_id, target=target)))
