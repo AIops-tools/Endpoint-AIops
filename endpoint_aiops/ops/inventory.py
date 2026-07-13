@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import Any
 
 from endpoint_aiops.dialect import DEFAULT_DIALECT
-from endpoint_aiops.ops._util import as_list, dialect_of, s
+from endpoint_aiops.ops._util import _seg, as_list, dialect_of, s
 
 # An endpoint not seen for this many hours is treated as "stale" (offline/lost).
 _STALE_AFTER_HOURS = 24.0
@@ -71,7 +71,7 @@ def list_endpoints(conn: Any) -> list[dict]:
 def get_endpoint(conn: Any, endpoint_id: str) -> dict:
     """[READ] One managed endpoint by id, normalised."""
     d = dialect_of(conn)
-    raw = conn.get(d.endpoint_path.format(id=endpoint_id))
+    raw = conn.get(d.endpoint_path.format(id=_seg(endpoint_id)))
     if isinstance(raw, dict) and raw:
         return _normalise(raw, d)
     raise KeyError(f"Endpoint '{endpoint_id}' not found.")

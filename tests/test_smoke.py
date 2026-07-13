@@ -62,10 +62,17 @@ def test_all_modules_import():
 
 
 @pytest.mark.unit
-def test_version():
+def test_version_matches_pyproject():
+    """__version__ is single-sourced from package metadata; it must track
+    pyproject.toml so a release bump can never ship a stale self-report."""
+    import tomllib
+    from pathlib import Path
+
     import endpoint_aiops
 
-    assert endpoint_aiops.__version__ == "0.1.0"
+    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    expected = tomllib.loads(pyproject.read_text("utf-8"))["project"]["version"]
+    assert endpoint_aiops.__version__ == expected
 
 
 @pytest.mark.unit
@@ -173,6 +180,32 @@ def test_assign_profile_captures_before_state():
     conn.post.assert_called_once_with(
         "/endpoints/tc01/profile", json={"profile_id": "prof-new"}
     )
+
+
+@pytest.mark.unit
+def test_path_traversal_id_is_url_encoded():
+    """An id containing '../' must never yield a raw '../' in the request path."""
+    from endpoint_aiops.ops import inventory, remediation
+
+    conn = MagicMock(name="conn")
+    conn.get.return_value = {"id": "x", "hostname": "x", "profile_id": "prof-old"}
+    conn.post.return_value = {}
+
+    inventory.get_endpoint(conn, "../admin")
+    (path,), _ = conn.get.call_args
+    assert "../" not in path
+    assert path == "/endpoints/..%2Fadmin"
+
+    remediation.reboot_endpoint(conn, "../admin")
+    (path,), _ = conn.post.call_args
+    assert "../" not in path
+    assert path == "/endpoints/..%2Fadmin/reboot"
+
+    remediation.assign_profile(conn, "../admin", "prof-new")
+    (path,), kwargs = conn.post.call_args
+    assert "../" not in path
+    assert path == "/endpoints/..%2Fadmin/profile"
+    assert kwargs == {"json": {"profile_id": "prof-new"}}
 
 
 @pytest.mark.unit

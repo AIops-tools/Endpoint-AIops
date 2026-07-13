@@ -1,15 +1,25 @@
-"""Shared helpers for Endpoint ops modules.
+"""Shared helpers for endpoint-management ops modules.
 
-Endpoint SCALE REST v2.0 list endpoints return a bare JSON array; a few wrap
+Endpoint-management REST list endpoints return a bare JSON array; a few wrap
 results in ``{"data": [...]}``. ``as_list`` normalises both. All API-returned
-text reaches the caller only after ``sanitize()`` (prompt-injection defense).
+text reaches the caller only after ``sanitize()`` (output hygiene).
 """
 
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
 from endpoint_aiops.governance import sanitize
+
+
+def _seg(value: Any) -> str:
+    """URL-encode one path segment so agent-supplied ids cannot alter the path.
+
+    ``quote(..., safe="")`` also encodes ``/``, so an id like ``../reboot``
+    becomes ``..%2Freboot`` instead of traversing to a different resource.
+    """
+    return quote(str(value), safe="")
 
 
 def as_list(data: Any, list_key: str | None = None) -> list[dict]:
