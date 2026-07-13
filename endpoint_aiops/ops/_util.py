@@ -12,13 +12,29 @@ from typing import Any
 from endpoint_aiops.governance import sanitize
 
 
-def as_list(data: Any) -> list[dict]:
-    """Normalise a list endpoint's payload to a list of dicts."""
+def as_list(data: Any, list_key: str | None = None) -> list[dict]:
+    """Normalise a list payload to a list of dicts.
+
+    A bare JSON array passes through; a dict is unwrapped via ``list_key`` (a
+    dialect's envelope key) when given, else the conventional ``data`` key.
+    """
     if isinstance(data, dict):
-        items = data.get("data", [])
+        items = data.get(list_key if list_key else "data", [])
     else:
         items = data
     return [i for i in (items or []) if isinstance(i, dict)]
+
+
+def dialect_of(conn: Any):
+    """The connection's target dialect, or the generic default for a bare/mock conn.
+
+    Only a genuine ``Dialect`` is honoured — a ``MagicMock`` connection auto-creates
+    a truthy ``target.dialect_obj``, so we type-check rather than truth-test.
+    """
+    from endpoint_aiops.dialect import DEFAULT_DIALECT, Dialect
+
+    candidate = getattr(getattr(conn, "target", None), "dialect_obj", None)
+    return candidate if isinstance(candidate, Dialect) else DEFAULT_DIALECT
 
 
 def s(value: Any, limit: int = 128) -> str:

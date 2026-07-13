@@ -7,6 +7,12 @@ to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Management-server dialects** — a per-target `dialect:` block in `config.yaml`
+  describes a server's **resource paths** and **response field aliases**, so the
+  same tools adapt to a differently-shaped endpoint-management API with no code
+  change. The built-in generic dialect reproduces the previous behaviour exactly;
+  vendor-specific mappings ship as `deploy/` overlays, keeping the package
+  vendor-neutral. (`endpoint_aiops/dialect.py`.)
 - **`endpoint_health_score`** (read, low) — a composite per-endpoint health/risk
   score (0-100). Pure analysis over injected inventory rows: it folds the fleet
   signals already known (offline, stale, patch-behind, agent-behind) into one

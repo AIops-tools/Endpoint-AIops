@@ -18,7 +18,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from endpoint_aiops.ops._util import as_list, s
+from endpoint_aiops.dialect import DEFAULT_DIALECT
+from endpoint_aiops.ops._util import as_list, dialect_of, s
 
 # Analysis is bounded so a huge export can never blow up latency or output.
 MAX_SESSIONS = 20000
@@ -35,19 +36,21 @@ DEFAULT_SLOW_BOOT_MS = 90000.0
 def list_sessions(conn: Any, since_hours: int = 24) -> list[dict]:
     """[READ] Recent login/boot sessions from the management server."""
     hours = max(1, min(int(since_hours), 24 * 30))
-    raw = conn.get("/sessions", params={"since_hours": hours})
-    return [_normalise(r) for r in as_list(raw)]
+    d = dialect_of(conn)
+    raw = conn.get(d.sessions_path, params={"since_hours": hours})
+    return [_normalise(r, d) for r in as_list(raw, d.list_key)]
 
 
-def _normalise(raw: dict) -> dict:
-    """Fold one raw session record into the stable analysis shape."""
+def _normalise(raw: dict, dialect: Any = None) -> dict:
+    """Fold one raw session record into the stable analysis shape (dialect-mapped)."""
+    d = dialect or DEFAULT_DIALECT
     return {
-        "endpoint": s(raw.get("endpoint_id") or raw.get("hostname") or raw.get("endpoint")),
-        "user": s(raw.get("user") or raw.get("username")),
-        "loginMs": _num(raw.get("login_ms") or raw.get("login_duration_ms")),
-        "bootMs": _num(raw.get("boot_ms") or raw.get("boot_duration_ms")),
-        "timestamp": s(raw.get("timestamp") or raw.get("ts")),
-        "result": s(raw.get("result") or raw.get("status") or "ok"),
+        "endpoint": s(d.pick(raw, "sessionEndpoint")),
+        "user": s(d.pick(raw, "user")),
+        "loginMs": _num(d.pick(raw, "loginMs")),
+        "bootMs": _num(d.pick(raw, "bootMs")),
+        "timestamp": s(d.pick(raw, "timestamp")),
+        "result": s(d.pick(raw, "result") or "ok"),
     }
 
 

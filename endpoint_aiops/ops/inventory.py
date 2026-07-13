@@ -15,7 +15,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from endpoint_aiops.ops._util import as_list, s
+from endpoint_aiops.dialect import DEFAULT_DIALECT
+from endpoint_aiops.ops._util import as_list, dialect_of, s
 
 # An endpoint not seen for this many hours is treated as "stale" (offline/lost).
 _STALE_AFTER_HOURS = 24.0
@@ -33,29 +34,29 @@ _BAND_DEGRADED = 50
 _MAX_WORST = 50
 
 
-def _normalise(raw: dict) -> dict:
+def _normalise(raw: dict, dialect: Any = None) -> dict:
     """Fold one raw endpoint record into the stable inventory shape.
 
-    Vendor payloads vary; we read the common fields and fall back to ``None``
-    rather than inventing values, so drift/analysis can tell "absent" from a
-    real value.
+    Field sourcing comes from the ``dialect`` (generic default when None), so a
+    differently-named management API maps without code changes. Missing fields
+    fall back to ``None`` rather than inventing values.
     """
+    d = dialect or DEFAULT_DIALECT
     return {
-        "id": s(raw.get("id") or raw.get("uuid") or raw.get("mac")),
-        "hostname": s(raw.get("hostname") or raw.get("name")),
-        "os": s(raw.get("os") or raw.get("platform")),
-        "osBuild": s(raw.get("os_build") or raw.get("build") or raw.get("firmware")),
-        "agentVersion": s(raw.get("agent_version") or raw.get("agent")),
-        "patchLevel": s(raw.get("patch_level") or raw.get("patch")),
-        "profileId": s(raw.get("profile_id") or raw.get("profile")),
-        "online": bool(raw.get("online", raw.get("connected", False))),
-        "lastSeenHours": _last_seen_hours(raw),
+        "id": s(d.pick(raw, "id")),
+        "hostname": s(d.pick(raw, "hostname")),
+        "os": s(d.pick(raw, "os")),
+        "osBuild": s(d.pick(raw, "osBuild")),
+        "agentVersion": s(d.pick(raw, "agentVersion")),
+        "patchLevel": s(d.pick(raw, "patchLevel")),
+        "profileId": s(d.pick(raw, "profileId")),
+        "online": bool(d.pick(raw, "online") or False),
+        "lastSeenHours": _last_seen_hours(d.pick(raw, "lastSeenHours")),
     }
 
 
-def _last_seen_hours(raw: dict) -> float | None:
+def _last_seen_hours(value: Any) -> float | None:
     """Hours since last contact, if the server reported it numerically."""
-    value = raw.get("last_seen_hours", raw.get("idle_hours"))
     if isinstance(value, (int, float)):
         return round(float(value), 2)
     return None
@@ -63,14 +64,16 @@ def _last_seen_hours(raw: dict) -> float | None:
 
 def list_endpoints(conn: Any) -> list[dict]:
     """[READ] All managed endpoints, normalised to the stable inventory shape."""
-    return [_normalise(r) for r in as_list(conn.get("/endpoints"))]
+    d = dialect_of(conn)
+    return [_normalise(r, d) for r in as_list(conn.get(d.endpoints_path), d.list_key)]
 
 
 def get_endpoint(conn: Any, endpoint_id: str) -> dict:
     """[READ] One managed endpoint by id, normalised."""
-    raw = conn.get(f"/endpoints/{endpoint_id}")
+    d = dialect_of(conn)
+    raw = conn.get(d.endpoint_path.format(id=endpoint_id))
     if isinstance(raw, dict) and raw:
-        return _normalise(raw)
+        return _normalise(raw, d)
     raise KeyError(f"Endpoint '{endpoint_id}' not found.")
 
 
