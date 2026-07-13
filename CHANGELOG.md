@@ -7,6 +7,11 @@ to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Deploy overlays** — a neutral OCI image (`deploy/Dockerfile`) and an IGEL
+  deployment note (`deploy/igel/README.md`) placing endpoint-aiops on the
+  **management plane** (a container by the UMS, *not* an on-endpoint App Portal
+  app) alongside the `deploy/igel-ums/` dialect. Vendor names stay in `deploy/`;
+  the package remains vendor-neutral.
 - **Management-server dialects** — a per-target `dialect:` block in `config.yaml`
   describes a server's **resource paths** and **response field aliases**, so the
   same tools adapt to a differently-shaped endpoint-management API with no code
