@@ -1,0 +1,43 @@
+# IGEL UMS (IMI) dialect for endpoint-aiops — a DEPLOY OVERLAY, not part of the
+# vendor-neutral package. Merge the `dialect:` block into your target in
+# ~/.endpoint-aiops/config.yaml so the generic endpoint tools speak to an IGEL
+# Universal Management Suite via its IGEL Management Interface (IMI) REST API.
+#
+# 待核实 — the exact IMI resource paths and field names vary by UMS/IMI version;
+# confirm each against the IMI API documentation for your UMS before relying on it.
+# Auth: IMI uses HTTP Basic / a message-auth handshake, NOT a static Bearer token,
+# so a live integration also needs an auth adapter or a gateway that presents
+# Bearer — the dialect below only maps paths + response fields (see README.md).
+
+targets:
+  - name: ums1
+    host: ums.example.local
+    port: 8443
+    api_path: /umsapi/v3
+    verify_ssl: false              # self-signed lab UMS only
+    dialect:
+      name: igel-ums
+      endpoints_path: /thinclients
+      endpoint_path: /thinclients/{id}
+      sessions_path: /thinclients/sessions          # 待核实
+      version_path: /serverstatus
+      profile_path: /thinclients/{id}/profile        # 待核实
+      reboot_path: /thinclients/{id}/commands/reboot  # 待核实
+      list_key: null                 # IMI returns a bare array (待核实)
+      fields:
+        id: [id, unitID, mac]
+        hostname: [name, unitName]
+        os: [productId, firmwareType]
+        osBuild: [firmwareVersion, firmware]
+        agentVersion: [agentVersion]
+        patchLevel: [patchLevel, firmwareVersion]
+        profileId: [profileId, configId]
+        online: [online, connected]
+        lastSeenHours: [lastContactHours]
+        # sessions (待核实 — IMI session/usage field names)
+        sessionEndpoint: [unitID, name]
+        user: [user, lastUser]
+        loginMs: [loginDurationMs]
+        bootMs: [bootDurationMs]
+        timestamp: [timestamp, ts]
+        result: [result, status]
