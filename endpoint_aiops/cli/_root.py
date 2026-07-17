@@ -12,6 +12,7 @@ from endpoint_aiops.cli.init import init_cmd
 from endpoint_aiops.cli.overview import overview_cmd
 from endpoint_aiops.cli.secret import secret_app
 from endpoint_aiops.cli.session import session_app
+from endpoint_aiops.cli.undo import undo_app
 
 app = typer.Typer(
     name="endpoint-aiops",
@@ -23,6 +24,7 @@ app.add_typer(endpoint_app, name="endpoint")
 app.add_typer(session_app, name="session")
 app.add_typer(drift_app, name="drift")
 app.add_typer(secret_app, name="secret")
+app.add_typer(undo_app, name="undo")
 app.command("init")(init_cmd)
 app.command("overview")(overview_cmd)
 app.command("doctor")(doctor_cmd)
