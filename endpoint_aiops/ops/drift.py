@@ -14,6 +14,8 @@ that has no declared gold image yet.
 
 from __future__ import annotations
 
+from endpoint_aiops.ops._util import envelope
+
 # Inventory fields compared for drift, in report order.
 DEFAULT_FIELDS = ("agentVersion", "patchLevel", "osBuild", "profileId")
 
@@ -44,14 +46,20 @@ def config_drift(
     endpoints: list[dict],
     baseline: dict | None = None,
     fields: list[str] | None = None,
+    limit: int = MAX_ROWS,
 ) -> dict:
     """[READ] Report endpoints that deviate from a per-field baseline.
 
     Args mirror the tool: ``endpoints`` are inventory rows; ``baseline`` maps a
     field to its intended value (omit to derive the fleet majority); ``fields``
     overrides which fields are checked (default: agent version, patch level, OS
-    build, profile). Returns per-field drift counts, the effective baseline, and
-    the drifted endpoints with their exact expected-vs-actual deviations.
+    build, profile); ``limit`` caps how many drifted endpoints are returned.
+    Returns per-field drift counts, the effective baseline, and the drifted
+    endpoints with their exact expected-vs-actual deviations.
+
+    ``driftedEndpoints`` is a truncation envelope — ``{"items": [...],
+    "returned": N, "limit": L, "truncated": bool}`` — so a capped list says so
+    itself. ``driftedCount`` remains the full, uncapped count.
     """
     rows = list(endpoints or [])
     checked = [f for f in (fields or DEFAULT_FIELDS)]
@@ -93,17 +101,20 @@ def config_drift(
         "driftedCount": len(drifted),
         "compliantCount": len(rows) - len(drifted),
         "driftByField": drift_by_field,
-        "driftedEndpoints": drifted[:MAX_ROWS],
-        "truncated": len(drifted) > MAX_ROWS,
+        "driftedEndpoints": envelope(drifted, limit),
     }
 
 
-def patch_status(endpoints: list[dict], target_patch: str | None = None) -> dict:
+def patch_status(
+    endpoints: list[dict], target_patch: str | None = None, limit: int = MAX_ROWS
+) -> dict:
     """[READ] Patch-level distribution + which endpoints are behind the target.
 
     ``target_patch`` is the desired level; with none, the fleet-majority level
     is used. "Behind" is a plain string inequality against that target — a
-    transparent check, not a version-semantics parser.
+    transparent check, not a version-semantics parser. ``limit`` caps the
+    returned list; ``behind`` is a truncation envelope ({items, returned, limit,
+    truncated}) while ``behindCount`` stays the full count.
     """
     rows = list(endpoints or [])
     target = target_patch or _majority(rows, "patchLevel")
@@ -118,8 +129,7 @@ def patch_status(endpoints: list[dict], target_patch: str | None = None) -> dict
         "targetSource": "provided" if target_patch else "fleet-majority",
         "distribution": _value_spread(rows, "patchLevel"),
         "behindCount": len(behind),
-        "behind": behind[:MAX_ROWS],
-        "truncated": len(behind) > MAX_ROWS,
+        "behind": envelope(behind, limit),
     }
 
 
@@ -127,6 +137,7 @@ def patch_compliance(
     endpoints: list[dict],
     target_patch: str | None = None,
     sla_pct: float = 95.0,
+    limit: int = MAX_ROWS,
 ) -> dict:
     """[READ] Patch-compliance SLA measure: % of the fleet on the target level.
 
@@ -137,7 +148,10 @@ def patch_compliance(
     string match on ``patchLevel`` — a transparent check, not a version-semantics
     parser. Compliance rate is compliant / evaluated x 100 (0.0 on an empty
     fleet). Verdict is ``meets_sla`` when the rate >= ``sla_pct``, ``below_sla``
-    otherwise, and ``insufficient`` for an empty fleet.
+    otherwise, and ``insufficient`` for an empty fleet. ``limit`` caps the
+    returned ``nonCompliant`` list, which is a truncation envelope ({items,
+    returned, limit, truncated}); the compliance rate is always computed over
+    the whole fleet, never over the capped list.
     """
     rows = list(endpoints or [])
     target = target_patch or _majority(rows, "patchLevel")
@@ -157,7 +171,8 @@ def patch_compliance(
         "complianceRatePct": round(rate, 2),
         "compliantCount": compliant_count,
         "verdict": verdict,
-        "nonCompliant": non_compliant[:MAX_ROWS],
+        "nonCompliantCount": len(non_compliant),
+        "nonCompliant": envelope(non_compliant, limit),
         "note": (
             "Advisory read-only SLA check: compliance is an exact-match on "
             "patchLevel against the target, not a version-semantics comparison."

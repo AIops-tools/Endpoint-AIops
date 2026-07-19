@@ -31,6 +31,7 @@ def login_storm_analysis(
     slow_boot_ms: float = 90000.0,
     sessions: Optional[list[dict[str, Any]]] = None,
     target: Optional[str] = None,
+    limit: int = 25,
 ) -> dict:
     """[READ] Detect login storms + rank the slowest login/boot contributors.
 
@@ -49,11 +50,15 @@ def login_storm_analysis(
         sessions: Injected session records — {endpoint, user, login_ms, boot_ms,
             timestamp (ISO-8601), result}; skips live collection.
         target: Endpoint-management target name from config; omit for the default.
+        limit: Max rows in each returned list (default 25).
 
-    Returns dict: {totalSessions, stormCount, storms:[{start, end, count,
-        peakConcurrent, spanS, distinctUsers, distinctEndpoints, avgLoginMs}],
-        slowLoginCount, slowestByLogin[], slowestByBoot[], failedLogins,
-        thresholds}.
+    Returns dict: {totalSessions, sessionsReceived, inputTruncated, stormCount,
+        storms:{items:[{start, end, count, peakConcurrent, spanS, distinctUsers,
+        distinctEndpoints, avgLoginMs}], returned, limit, truncated},
+        slowLoginCount, slowestByLogin:{items[], ...}, slowestByBoot:{items[],
+        ...}, failedLogins, thresholds}. Each list is a truncation envelope —
+        when its 'truncated' is true, re-run with a higher limit; stormCount is
+        the full episode count.
 
     Example: login_storm_analysis(sessions=[{"endpoint":"tc01","user":"a",
         "login_ms":42000,"timestamp":"2026-07-12T08:00:00Z"}, ...]).
@@ -66,4 +71,5 @@ def login_storm_analysis(
         min_concurrent=min_concurrent,
         slow_login_ms=slow_login_ms,
         slow_boot_ms=slow_boot_ms,
+        limit=limit,
     )

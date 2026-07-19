@@ -16,6 +16,7 @@ def drift_report(
     fields: Optional[list[str]] = None,
     endpoints: Optional[list[dict[str, Any]]] = None,
     target: Optional[str] = None,
+    limit: int = 200,
 ) -> dict:
     """[READ] Report endpoints drifted from a per-field baseline (patch/agent/OS/profile).
 
@@ -30,16 +31,19 @@ def drift_report(
             osBuild, profileId).
         endpoints: Injected inventory rows; skips live collection.
         target: Endpoint-management target name from config; omit for the default.
+        limit: Max drifted endpoints to return (default 200).
 
     Returns dict: {totalEndpoints, baselineSource, baseline, fieldsChecked,
-        driftedCount, compliantCount, driftByField, driftedEndpoints[], truncated}.
+        driftedCount, compliantCount, driftByField, driftedEndpoints:{items[],
+        returned, limit, truncated}}. driftedCount is the full count; when
+        driftedEndpoints.truncated is true, re-run with a higher limit.
 
     Example: drift_report(endpoints=[{"hostname":"tc01","patchLevel":"2026-06"},
         {"hostname":"tc02","patchLevel":"2026-05"}]).
     """
     if endpoints is None:
         endpoints = inv.list_endpoints(_get_connection(target))
-    return ops.config_drift(endpoints, baseline=baseline, fields=fields)
+    return ops.config_drift(endpoints, baseline=baseline, fields=fields, limit=limit)
 
 
 @mcp.tool()
@@ -49,6 +53,7 @@ def patch_status(
     target_patch: Optional[str] = None,
     endpoints: Optional[list[dict[str, Any]]] = None,
     target: Optional[str] = None,
+    limit: int = 200,
 ) -> dict:
     """[READ] Patch-level distribution + which endpoints are behind the target level.
 
@@ -56,13 +61,16 @@ def patch_status(
         target_patch: Desired patch level; omit to use the fleet-majority level.
         endpoints: Injected inventory rows; skips live collection.
         target: Endpoint-management target name from config; omit for the default.
+        limit: Max behind-endpoints to return (default 200).
 
     Returns dict: {totalEndpoints, targetPatch, targetSource, distribution,
-        behindCount, behind[], truncated}.
+        behindCount, behind:{items[], returned, limit, truncated}}. behindCount
+        is the full count; when behind.truncated is true, re-run with a higher
+        limit.
     """
     if endpoints is None:
         endpoints = inv.list_endpoints(_get_connection(target))
-    return ops.patch_status(endpoints, target_patch=target_patch)
+    return ops.patch_status(endpoints, target_patch=target_patch, limit=limit)
 
 
 @mcp.tool()
@@ -72,6 +80,7 @@ def patch_compliance(
     endpoints: list[dict[str, Any]],
     target_patch: Optional[str] = None,
     sla_pct: float = 95.0,
+    limit: int = 200,
 ) -> dict:
     """[READ] Patch-compliance SLA measure: % of the fleet on the target patch level.
 
@@ -85,11 +94,16 @@ def patch_compliance(
         endpoints: Injected inventory rows to evaluate (e.g. from endpoint_list).
         target_patch: Desired patch level; omit to use the fleet-majority level.
         sla_pct: Compliance SLA threshold percent; default 95.0.
+        limit: Max non-compliant endpoints to return (default 200).
 
     Returns dict: {endpointsEvaluated, targetPatch, targetSource, slaTargetPct,
-        complianceRatePct, compliantCount, verdict, nonCompliant[], note}.
+        complianceRatePct, compliantCount, verdict, nonCompliantCount,
+        nonCompliant:{items[], returned, limit, truncated}, note}. The rate is
+        always computed over the whole fleet, never over the capped list.
 
     Example: patch_compliance(endpoints=[{"hostname":"tc01","patchLevel":"2026-06"},
         {"hostname":"tc02","patchLevel":"2026-05"}], target_patch="2026-06").
     """
-    return ops.patch_compliance(endpoints, target_patch=target_patch, sla_pct=sla_pct)
+    return ops.patch_compliance(
+        endpoints, target_patch=target_patch, sla_pct=sla_pct, limit=limit
+    )

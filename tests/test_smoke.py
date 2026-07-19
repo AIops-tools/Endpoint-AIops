@@ -122,6 +122,9 @@ def test_every_mcp_tool_is_governed_by_harness():
 
     tool_objs = _shared.mcp._tool_manager._tools
     assert EXPECTED_TOOLS <= set(tool_objs), "tool registry incomplete"
+    assert len(tool_objs) == 13, (
+        "tool count changed — update README/SKILL/server.json too"
+    )
     for name, tool in tool_objs.items():
         fn = getattr(tool, "fn", None)
         assert fn is not None, f"{name} has no fn"
@@ -238,9 +241,9 @@ def test_login_storm_detects_episode_and_ranks_slow():
     out = ops.login_storm(rows, window_s=300, min_concurrent=10)
     assert out["totalSessions"] == 12
     assert out["stormCount"] == 1
-    storm = out["storms"][0]
+    storm = out["storms"]["items"][0]
     assert storm["count"] == 12 and storm["distinctEndpoints"] == 12
-    assert out["slowestByLogin"][0]["endpoint"] == "tc03"   # 61000 ms wins
+    assert out["slowestByLogin"]["items"][0]["endpoint"] == "tc03"   # 61000 ms wins
     assert out["slowLoginCount"] == 1                       # only tc03 > 30s
     assert out["failedLogins"] == 1
 
@@ -271,7 +274,7 @@ def test_config_drift_fleet_majority_baseline():
     assert out["baselineSource"] == "fleet-majority"
     assert out["baseline"]["agentVersion"] == "12.6"
     assert out["driftedCount"] == 1 and out["compliantCount"] == 2
-    assert out["driftedEndpoints"][0]["endpoint"] == "tc03"
+    assert out["driftedEndpoints"]["items"][0]["endpoint"] == "tc03"
 
 
 @pytest.mark.unit
@@ -297,7 +300,7 @@ def test_patch_status_behind_target():
     ]
     out = ops.patch_status(endpoints, target_patch="2026-06")
     assert out["targetPatch"] == "2026-06" and out["behindCount"] == 1
-    assert out["behind"][0]["endpoint"] == "tc02"
+    assert out["behind"]["items"][0]["endpoint"] == "tc02"
 
 
 @pytest.mark.unit

@@ -37,22 +37,31 @@ def undo_list(limit: int = 50, target: Optional[str] = None) -> dict:
     would run, and a human note. Use the ``undoId`` with ``undo_apply``.
 
     Args:
-        limit: Max rows to return (default 50).
+        limit: Max rows to return (1..500, default 50).
         target: Unused (undo state is host-local); accepted for CLI uniformity.
+
+    Returns dict: {undos[], returned, limit, truncated}. One extra row is
+    fetched, so 'truncated' is measured rather than guessed from the returned
+    count happening to equal the limit; re-run with a higher limit when true.
     """
-    rows = get_undo_store().list(status="recorded", limit=max(1, min(limit, 500)))
+    requested = max(1, min(limit, 500))
+    rows = get_undo_store().list(status="recorded", limit=requested + 1)
+    truncated = len(rows) > requested
+    undos = [
+        {
+            "undoId": r["undo_id"],
+            "ts": r["ts"],
+            "originalTool": r["tool"],
+            "inverseTool": r["undo_tool"],
+            "note": r.get("note", ""),
+        }
+        for r in rows[:requested]
+    ]
     return {
-        "count": len(rows),
-        "undos": [
-            {
-                "undoId": r["undo_id"],
-                "ts": r["ts"],
-                "originalTool": r["tool"],
-                "inverseTool": r["undo_tool"],
-                "note": r.get("note", ""),
-            }
-            for r in rows
-        ],
+        "undos": undos,
+        "returned": len(undos),
+        "limit": requested,
+        "truncated": truncated,
     }
 
 

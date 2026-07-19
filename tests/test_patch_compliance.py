@@ -26,7 +26,7 @@ def test_patch_compliance_meets_sla_fleet():
     assert out["complianceRatePct"] == 100.0
     assert out["compliantCount"] == 4
     assert out["verdict"] == "meets_sla"
-    assert out["nonCompliant"] == []
+    assert out["nonCompliant"]["items"] == []
 
 
 @pytest.mark.unit
@@ -43,7 +43,7 @@ def test_patch_compliance_below_sla_fleet_lists_non_compliant():
     assert out["compliantCount"] == 2
     assert round(out["complianceRatePct"], 2) == 66.67
     assert out["verdict"] == "below_sla"
-    assert out["nonCompliant"] == [{"endpoint": "tc03", "patchLevel": "2026-05"}]
+    assert out["nonCompliant"]["items"] == [{"endpoint": "tc03", "patchLevel": "2026-05"}]
 
 
 @pytest.mark.unit
@@ -67,7 +67,7 @@ def test_patch_compliance_explicit_target_vs_majority():
     assert provided["compliantCount"] == 0
     assert provided["complianceRatePct"] == 0.0
     assert provided["verdict"] == "below_sla"
-    assert len(provided["nonCompliant"]) == 2
+    assert len(provided["nonCompliant"]["items"]) == 2
 
 
 @pytest.mark.unit
@@ -79,7 +79,7 @@ def test_patch_compliance_empty_fleet_is_insufficient():
     assert out["complianceRatePct"] == 0.0
     assert out["compliantCount"] == 0
     assert out["verdict"] == "insufficient"
-    assert out["nonCompliant"] == []
+    assert out["nonCompliant"]["items"] == []
 
 
 @pytest.mark.unit
@@ -100,4 +100,4 @@ def test_patch_compliance_tool_is_governed_low_and_runs():
     assert "error" not in out
     assert out["verdict"] == "below_sla"
     assert out["compliantCount"] == 1
-    assert out["nonCompliant"][0]["endpoint"] == "tc02"
+    assert out["nonCompliant"]["items"][0]["endpoint"] == "tc02"

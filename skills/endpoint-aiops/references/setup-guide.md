@@ -1,6 +1,6 @@
 # endpoint-aiops setup & security guide
 
-> Preview / mock-only — not yet validated against a live endpoint-management server.
+> Not yet exercised against a live endpoint-management server (see docs/VERIFICATION.md).
 
 ## 1. Install
 

@@ -7,7 +7,14 @@ from typing import Annotated
 
 import typer
 
-from endpoint_aiops.cli._common import TargetOption, cli_errors, console, get_connection
+from endpoint_aiops.cli._common import (
+    LimitOption,
+    TargetOption,
+    cli_errors,
+    console,
+    get_connection,
+    warn_if_truncated,
+)
 
 session_app = typer.Typer(
     name="session",
@@ -37,11 +44,15 @@ def session_storm(
     window_s: Annotated[float, typer.Option(help="Sliding window (s) for concurrency")] = 300.0,
     min_concurrent: Annotated[int, typer.Option(help="Logins/window that = a storm")] = 10,
     target: TargetOption = None,
+    limit: LimitOption = 25,
 ) -> None:
     """Detect login storms and rank the slowest login/boot contributors."""
     from endpoint_aiops.ops import sessions as ops
 
     conn, _ = get_connection(target)
     rows = ops.list_sessions(conn, since_hours=since_hours)
-    result = ops.login_storm(rows, window_s=window_s, min_concurrent=min_concurrent)
+    result = ops.login_storm(
+        rows, window_s=window_s, min_concurrent=min_concurrent, limit=limit
+    )
     console.print_json(json.dumps(result))
+    warn_if_truncated(result, "storms", "slowestByLogin", "slowestByBoot")

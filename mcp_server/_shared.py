@@ -75,7 +75,7 @@ def tool_errors(shape: str = "dict") -> Callable:
 mcp = FastMCP(
     "endpoint-aiops",
     instructions=(
-        "Managed-endpoint operations (preview) for thin-client / VDI / device "
+        "Managed-endpoint operations for thin-client / VDI / device "
         "fleets: a one-shot fleet 'overview'; endpoint inventory (list/get); "
         "login & boot sessions (list) plus 'login_storm_analysis' — detect "
         "morning login storms and rank the slowest login/boot contributors; "

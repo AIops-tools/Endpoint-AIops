@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import Any
 
 from endpoint_aiops.dialect import DEFAULT_DIALECT
-from endpoint_aiops.ops._util import _seg, as_list, dialect_of, s
+from endpoint_aiops.ops._util import _seg, as_list, dialect_of, envelope, opt
 
 # An endpoint not seen for this many hours is treated as "stale" (offline/lost).
 _STALE_AFTER_HOURS = 24.0
@@ -38,18 +38,20 @@ def _normalise(raw: dict, dialect: Any = None) -> dict:
     """Fold one raw endpoint record into the stable inventory shape.
 
     Field sourcing comes from the ``dialect`` (generic default when None), so a
-    differently-named management API maps without code changes. Missing fields
-    fall back to ``None`` rather than inventing values.
+    differently-named management API maps without code changes. A field the
+    server did not report comes back as ``None`` (JSON ``null``), never as an
+    empty string — absent and empty are different facts, and the key is always
+    present so the consumer can see the field was considered.
     """
     d = dialect or DEFAULT_DIALECT
     return {
-        "id": s(d.pick(raw, "id")),
-        "hostname": s(d.pick(raw, "hostname")),
-        "os": s(d.pick(raw, "os")),
-        "osBuild": s(d.pick(raw, "osBuild")),
-        "agentVersion": s(d.pick(raw, "agentVersion")),
-        "patchLevel": s(d.pick(raw, "patchLevel")),
-        "profileId": s(d.pick(raw, "profileId")),
+        "id": opt(d.pick(raw, "id")),
+        "hostname": opt(d.pick(raw, "hostname")),
+        "os": opt(d.pick(raw, "os")),
+        "osBuild": opt(d.pick(raw, "osBuild")),
+        "agentVersion": opt(d.pick(raw, "agentVersion")),
+        "patchLevel": opt(d.pick(raw, "patchLevel")),
+        "profileId": opt(d.pick(raw, "profileId")),
         "online": bool(d.pick(raw, "online") or False),
         "lastSeenHours": _last_seen_hours(d.pick(raw, "lastSeenHours")),
     }
@@ -137,6 +139,7 @@ def endpoint_health_score(
     endpoints: list[dict],
     stale_hours: float = _STALE_AFTER_HOURS,
     baseline: dict | None = None,
+    limit: int = _MAX_WORST,
 ) -> dict:
     """[READ] Composite per-endpoint health/risk score, worst endpoints first.
 
@@ -147,6 +150,11 @@ def endpoint_health_score(
     ``baseline`` (keys ``agentVersion`` / ``patchLevel``) or derived by fleet
     majority when none is given, so it works before a gold image is declared.
     Advisory only: the score is 100 minus cited deductions, clamped to [0,100].
+
+    ``limit`` caps the returned worst-first list. ``worst`` is a truncation
+    envelope — ``{"items": [...], "returned": N, "limit": L, "truncated":
+    bool}`` — so a capped ranking says so rather than looking complete; the
+    band ``summary`` always counts the whole fleet.
     """
     rows = list(endpoints or [])
     base = baseline or {}
@@ -167,7 +175,7 @@ def endpoint_health_score(
             "source": "provided" if baseline else "fleet-majority",
         },
         "summary": summary,
-        "worst": worst[:_MAX_WORST],
+        "worst": envelope(worst, limit),
         "note": (
             "Advisory read-only heuristic: 100 minus cited deductions, clamped "
             "to [0,100]; bands healthy>=80, degraded 50-79, critical<50."

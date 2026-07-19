@@ -54,6 +54,7 @@ def endpoint_health_score(
     endpoints: list[dict[str, Any]],
     stale_hours: float = 24.0,
     baseline: Optional[dict[str, Any]] = None,
+    limit: int = 50,
 ) -> dict:
     """[READ] Composite per-endpoint health score (0-100), worst endpoints first.
 
@@ -71,13 +72,18 @@ def endpoint_health_score(
         stale_hours: An endpoint whose lastSeenHours >= this is 'stale' (default 24).
         baseline: Intended {'agentVersion', 'patchLevel'}; omit to derive the
             fleet majority.
+        limit: Max worst-first endpoints to return (default 50).
 
     Returns dict: {endpointsEvaluated, baseline:{agentVersion, patchLevel,
-        source}, summary:{healthy, degraded, critical}, worst:[{endpoint, score,
-        band, reasons[]} ...worst-first], note}.
+        source}, summary:{healthy, degraded, critical}, worst:{items:[{endpoint,
+        score, band, reasons[]} ...worst-first], returned, limit, truncated},
+        note}. The summary always counts the whole fleet; when worst.truncated
+        is true, re-run with a higher limit to see further down the ranking.
 
     Example: endpoint_health_score(endpoints=[
         {"hostname":"tc01","online":True,"agentVersion":"12.6","patchLevel":"2026-06"},
         {"hostname":"tc02","online":False,"agentVersion":"12.5","patchLevel":"2026-05"}]).
     """
-    return ops.endpoint_health_score(endpoints, stale_hours=stale_hours, baseline=baseline)
+    return ops.endpoint_health_score(
+        endpoints, stale_hours=stale_hours, baseline=baseline, limit=limit
+    )

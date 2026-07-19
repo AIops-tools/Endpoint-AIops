@@ -1,7 +1,7 @@
 # endpoint-aiops CLI reference
 
-> Preview / mock-only. REST paths are modelled generically against an
-> endpoint-management API and need live verification.
+> REST paths are modelled generically against an endpoint-management API and
+> have not yet been exercised live (see docs/VERIFICATION.md).
 
 ## Setup & diagnostics
 

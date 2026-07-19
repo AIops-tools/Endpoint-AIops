@@ -58,6 +58,27 @@ def get_connection(target: str | None, config_path: Path | None = None) -> tuple
     return mgr.connect(target), cfg
 
 
+LimitOption = Annotated[
+    int, typer.Option("--limit", help="Max rows in each returned list")
+]
+
+
+def warn_if_truncated(result: dict, *keys: str) -> None:
+    """Print a visible note for every truncation envelope that was capped.
+
+    The JSON already carries ``truncated``; a human reading a long dump will
+    miss it, so each capped list also says so in plain words, with the fix.
+    """
+    for key in keys:
+        section = result.get(key)
+        if isinstance(section, dict) and section.get("truncated"):
+            console.print(
+                f"[yellow]Note: '{key}' shows {section.get('returned')} of more "
+                f"than {section.get('limit')} rows — truncated, re-run with a "
+                f"higher --limit to see the rest.[/]"
+            )
+
+
 def dry_run_print(*, operation: str, api_call: str, parameters: dict | None = None) -> None:
     """Print a dry-run preview of the API call that would be made."""
     console.print("\n[bold magenta][DRY-RUN] No changes will be made.[/]")

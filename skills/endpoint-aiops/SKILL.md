@@ -1,10 +1,16 @@
 ---
 name: endpoint-aiops
+slug: endpoint-aiops
+displayName: "Endpoint AIops"
+summary: "Governed managed-endpoint ops — login-storm & drift analysis, 13 MCP tools with audit/budget/undo."
+license: MIT
+homepage: https://github.com/AIops-tools/Endpoint-AIops
+tags: [aiops, mcp, governance, endpoint]
 description: >
   Use this skill whenever the user needs to operate a managed-endpoint fleet (thin clients, VDI endpoints, centrally-managed devices) — a one-shot fleet health overview, endpoint inventory (list/get), a composite per-endpoint health score (which endpoints are worst?), login & boot sessions, login-storm analysis (detect morning login storms and rank the slowest login/boot contributors), patch/config drift (which endpoints deviate from the fleet baseline), and two guarded writes (assign a config profile, reboot an endpoint).
   Always use this skill for "endpoint fleet overview", "list managed endpoints", "which endpoints are worst", "endpoint health score", "rank endpoints by risk", "why is login slow this morning", "login storm", "boot time analysis", "patch drift", "config drift", "which endpoints are behind on patches", "assign a profile to an endpoint", or "reboot a thin client" when the context is an endpoint-management fleet.
   Do NOT use when the target is OT / industrial equipment (Modbus, OPC-UA, PLCs — use industrial-aiops), a hypervisor, a storage appliance, a backup product, a Kubernetes cluster, or a network device (negative routing hints only).
-  Preview — common managed-endpoint operations with a built-in governance harness (audit, policy, token budget, undo, risk-tiers). Mock-validated only, not yet verified against a live management server.
+  Covers common managed-endpoint operations with a built-in governance harness (audit, policy, token budget, undo, risk-tiers). The test suite is mock-based; not yet exercised against a live management server (see docs/VERIFICATION.md).
 installer:
   kind: uv
   package: endpoint-aiops
@@ -13,23 +19,23 @@ allowed-tools:
   - Bash
 metadata: {"openclaw":{"requires":{"env":["ENDPOINT_AIOPS_CONFIG"],"bins":["endpoint-aiops"],"config":["~/.endpoint-aiops/config.yaml","~/.endpoint-aiops/secrets.enc"]},"optional":{"env":["ENDPOINT_AIOPS_MASTER_PASSWORD"]},"primaryEnv":"ENDPOINT_AIOPS_CONFIG","homepage":"https://github.com/AIops-tools/Endpoint-AIops","emoji":"💻","os":["macos","linux"]}}
 compatibility: >
-  Standalone, self-governed managed-endpoint operations (preview). The governance harness (audit, policy, token/runaway budget, undo, risk-tiers) is bundled in the package — no external skill-family dependency.
+  Standalone, self-governed managed-endpoint operations. The governance harness (audit, policy, token/runaway budget, undo, risk-tiers) is bundled in the package — no external skill-family dependency.
   All write operations are audited to a local SQLite DB under ~/.endpoint-aiops/ (relocatable via ENDPOINT_AIOPS_HOME).
   Credentials: the endpoint-management server's API key is stored ENCRYPTED in ~/.endpoint-aiops/secrets.enc (Fernet/AES-128 + scrypt-derived key) — never plaintext on disk. Run 'endpoint-aiops init' to onboard, or 'endpoint-aiops secret set <target>' to add one. The store is unlocked by a master password from ENDPOINT_AIOPS_MASTER_PASSWORD (non-interactive/MCP/CI) or an interactive prompt (CLI on a TTY). A legacy plaintext env var ENDPOINT_<TARGET_NAME_UPPER>_APIKEY is still honoured as a fallback with a deprecation warning (migrate with 'endpoint-aiops secret migrate'). The API key is sent as an Authorization: Bearer header at request time and held only in memory; keys are never logged or echoed.
   State-changing operations (assign-profile, reboot) require double confirmation at the CLI layer and support --dry-run. All write tools pass through the @governed_tool decorator (pre-check + budget guard + audit + risk-tier gate). endpoint_assign_profile is high-risk and reversible (captures the prior profile, records an inverse reassign undo descriptor); endpoint_reboot is medium-risk with no undo (a reboot has no safe inverse).
   Webhooks: none — no outbound network calls beyond the configured endpoint-management REST API.
   SSL: verify_ssl defaults to true; disable only for self-signed lab certificates.
   Transitive dependencies: httpx (HTTP client) and the MCP SDK. No post-install scripts or background services.
-  PREVIEW: mock-validated only; the REST paths are modelled generically (/endpoints, /sessions, /version) and need live verification.
+  Verification status: the test suite is mock-based; the REST paths are modelled generically (/endpoints, /sessions, /version) and have not yet been exercised against a live server — docs/VERIFICATION.md defines the checklist.
 ---
 
-# Endpoint AIops (preview)
+# Endpoint AIops
 
 > **Disclaimer**: Community-maintained open-source project, **not affiliated with, endorsed by, or sponsored by any endpoint-management vendor.** Product and trademark names belong to their owners. Source at [github.com/AIops-tools/Endpoint-AIops](https://github.com/AIops-tools/Endpoint-AIops) under the MIT license.
 
-Governed managed-endpoint operations — **11 MCP tools**, every one wrapped with the bundled `@governed_tool` harness: a local unified audit log under `~/.endpoint-aiops/`, policy engine, token/runaway budget guard, undo-token recording, and graduated-autonomy risk tiers. The management-server API key is stored **encrypted** (`~/.endpoint-aiops/secrets.enc`, Fernet + scrypt) — never plaintext on disk.
+Governed managed-endpoint operations — **13 MCP tools**, every one wrapped with the bundled `@governed_tool` harness: a local unified audit log under `~/.endpoint-aiops/`, policy engine, token/runaway budget guard, undo-token recording, and graduated-autonomy risk tiers. The management-server API key is stored **encrypted** (`~/.endpoint-aiops/secrets.enc`, Fernet + scrypt) — never plaintext on disk.
 
-> **Standalone**: the governance harness is bundled in the package (`endpoint_aiops.governance`) — endpoint-aiops has no external skill-family dependency. **Preview / mock-only**: not yet validated against a live management server.
+> **Standalone**: the governance harness is bundled in the package (`endpoint_aiops.governance`) — endpoint-aiops has no external skill-family dependency. The test suite is mock-based; a live management server has not yet been exercised (see `docs/VERIFICATION.md`).
 
 ## What This Skill Does
 
@@ -73,22 +79,36 @@ endpoint-aiops doctor
 
 ## Common Workflows
 
-### Diagnose a 9am login storm
+### "Nobody can log in this morning" — diagnose the 9am login storm
 
-1. `endpoint-aiops session storm` → storm episodes (peak concurrency, distinct users/endpoints) + the slowest logins and boots
-2. Read `slowestByLogin` / `slowestByBoot` to see which endpoints/users dominate
-3. Cross-check the laggards against drift: `endpoint-aiops drift report` — a stray agent version or missing patch often explains slow logins
+1. `endpoint-aiops overview` → is this fleet-wide (offline/stale counts spiking) or confined to logins?
+2. `endpoint-aiops session storm --since-hours 12 --window-s 300 --min-concurrent 10` → storm episodes with peak concurrency and distinct users/endpoints, plus `slowestByLogin` / `slowestByBoot`
+3. `endpoint-aiops session list --since-hours 12` → inspect the raw sessions behind a suspicious episode (confirm the timestamps, don't trust the summary alone)
+4. `endpoint-aiops drift report` → cross-check the laggards; a stray agent version or divergent profile is a common cause of slow logins
+5. **Failure branch**: if `session storm` reports no episodes but users still complain, widen the window (`--window-s 900`) and lower `--min-concurrent` before concluding there is no storm; if the CLI errors on connectivity, run `endpoint-aiops doctor` first — the analysis is only as good as the session feed.
 
-### Bring a drifted endpoint back to baseline (reversible)
+### Bring a drifted endpoint back to the fleet baseline (reversible)
 
-1. `endpoint-aiops drift report` → find the drifted endpoint and its deviating fields
-2. `endpoint-aiops endpoint assign-profile <id> <profile> --dry-run` → preview the call
-3. Re-run without `--dry-run` (double-confirm) — captures the prior profile and records an inverse reassign undo descriptor
-4. If it regresses, replay the recorded undo to restore the prior profile
+1. `endpoint-aiops drift report` → the drifted endpoints and exactly which fields deviate from the fleet-majority baseline
+2. `endpoint-aiops endpoint get <id>` → confirm you are about to change the right device and note its current profile
+3. `endpoint-aiops endpoint assign-profile <id> <profile-id> --dry-run` → preview the exact `POST /endpoints/<id>/profile` call, changes nothing
+4. `endpoint-aiops endpoint assign-profile <id> <profile-id>` → double confirmation; `high` risk, so with no `rules.yaml` it requires `ENDPOINT_AUDIT_APPROVED_BY`. The prior profile is captured and an inverse reassign undo descriptor is recorded
+5. **Failure branch**: if the endpoint misbehaves on the new profile, `endpoint-aiops undo list` then `endpoint-aiops undo apply <id>` restores the *captured* prior profile (not a guess); re-run `drift report` to confirm the fleet picture.
 
-### Offline analysis (no live server)
+### Patch-compliance sweep before a maintenance window
 
-Pass records straight to the analysis tools — `login_storm_analysis(sessions=[...])` or `drift_report(endpoints=[...])` — to analyse an exported dataset without connecting to a management server.
+1. `endpoint-aiops drift patch --target-patch 2024-06` → distribution of patch levels plus the endpoints behind the target
+2. `endpoint-aiops endpoint list` → resolve the behind-target ids to hostnames/owners for the change ticket
+3. `endpoint-aiops overview` → check how many of those are currently offline (an offline endpoint will not take the patch)
+4. Reboot a stuck endpoint that has staged its patch: `endpoint-aiops endpoint reboot <id> --dry-run`, then without `--dry-run` (double confirmation)
+5. **Failure branch**: `endpoint_reboot` is `medium` risk and declares **no undo** — a reboot has no safe inverse. If the endpoint does not come back, the audit record in `~/.endpoint-aiops/audit.db` holds its prior online state for the incident write-up; recovery is out-of-band (console/PXE), not via this tool.
+
+### Offline post-incident analysis (no live server)
+
+1. Export the incident's session and endpoint records from the management server into JSON
+2. Call the analysis tools with injected records — `login_storm_analysis(sessions=[...])`, `drift_report(endpoints=[...])`, `patch_compliance(endpoints=[...])`, `endpoint_health_score(endpoints=[...])` — no connection or credentials required
+3. `endpoint_health_score` returns a composite 0-100 per endpoint, worst first, with every deduction cited — use it to rank the remediation queue
+4. **Failure branch**: if a tool rejects the injected records, the export is missing fields the analysis needs (e.g. session start/login-duration, or endpoint patch level) — re-export rather than hand-patching the data, so the numbers stay traceable to the source.
 
 ## Governance & Safety
 

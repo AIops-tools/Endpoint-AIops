@@ -19,7 +19,7 @@ from datetime import datetime
 from typing import Any
 
 from endpoint_aiops.dialect import DEFAULT_DIALECT
-from endpoint_aiops.ops._util import as_list, dialect_of, s
+from endpoint_aiops.ops._util import as_list, dialect_of, envelope, opt, s
 
 # Analysis is bounded so a huge export can never blow up latency or output.
 MAX_SESSIONS = 20000
@@ -42,14 +42,19 @@ def list_sessions(conn: Any, since_hours: int = 24) -> list[dict]:
 
 
 def _normalise(raw: dict, dialect: Any = None) -> dict:
-    """Fold one raw session record into the stable analysis shape (dialect-mapped)."""
+    """Fold one raw session record into the stable analysis shape (dialect-mapped).
+
+    Fields the server did not report stay ``None`` rather than collapsing to
+    ``""`` — a session with no recorded user is not a session with a blank user.
+    ``result`` is the exception: it always has a value ("ok" when unreported).
+    """
     d = dialect or DEFAULT_DIALECT
     return {
-        "endpoint": s(d.pick(raw, "sessionEndpoint")),
-        "user": s(d.pick(raw, "user")),
+        "endpoint": opt(d.pick(raw, "sessionEndpoint")),
+        "user": opt(d.pick(raw, "user")),
         "loginMs": _num(d.pick(raw, "loginMs")),
         "bootMs": _num(d.pick(raw, "bootMs")),
-        "timestamp": s(d.pick(raw, "timestamp")),
+        "timestamp": opt(d.pick(raw, "timestamp")),
         "result": s(d.pick(raw, "result") or "ok"),
     }
 
@@ -58,8 +63,8 @@ def _num(value: Any) -> float | None:
     return float(value) if isinstance(value, (int, float)) else None
 
 
-def _epoch(ts: str) -> float | None:
-    """Parse an ISO-8601 timestamp to epoch seconds; None if unparseable."""
+def _epoch(ts: str | None) -> float | None:
+    """Parse an ISO-8601 timestamp to epoch seconds; None if absent/unparseable."""
     if not ts:
         return None
     try:
@@ -115,6 +120,7 @@ def login_storm(
     min_concurrent: int = DEFAULT_MIN_CONCURRENT,
     slow_login_ms: float = DEFAULT_SLOW_LOGIN_MS,
     slow_boot_ms: float = DEFAULT_SLOW_BOOT_MS,
+    limit: int = MAX_ROWS,
 ) -> dict:
     """[READ] Detect login storms and rank the slowest login/boot contributors.
 
@@ -124,12 +130,20 @@ def login_storm(
     endpoints, and average login time), the slowest endpoints by login and boot
     time, a count of failed logins, and the thresholds used — nothing is
     flagged without its number.
+
+    ``limit`` caps each returned list. ``storms``, ``slowestByLogin`` and
+    ``slowestByBoot`` are truncation envelopes — ``{"items": [...], "returned":
+    N, "limit": L, "truncated": bool}`` — so a capped list announces itself
+    instead of looking like the whole picture. ``stormCount`` stays the full
+    episode count. Input is also bounded: at most ``MAX_SESSIONS`` records are
+    analysed, reported as ``sessionsReceived`` / ``inputTruncated``.
     """
-    rows = [_normalise(r) if "loginMs" not in r else r for r in (sessions or [])][:MAX_SESSIONS]
+    received = list(sessions or [])
+    rows = [_normalise(r) if "loginMs" not in r else r for r in received][:MAX_SESSIONS]
     total = len(rows)
 
     timed = sorted(
-        ((_epoch(r.get("timestamp", "")), r) for r in rows),
+        ((_epoch(r.get("timestamp")), r) for r in rows),
         key=lambda pair: (pair[0] is None, pair[0] or 0.0),
     )
     times = [t for t, _ in timed if t is not None]
@@ -159,15 +173,19 @@ def login_storm(
         key=lambda r: r["bootMs"],
         reverse=True,
     )
-    failed = [r for r in rows if str(r.get("result", "")).lower() in {"fail", "failed", "error"}]
+    # `or ""` because an injected record may carry an explicit null result —
+    # str(None) would otherwise become the string "none".
+    failed = [r for r in rows if str(r.get("result") or "").lower() in {"fail", "failed", "error"}]
 
     return {
         "totalSessions": total,
+        "sessionsReceived": len(received),
+        "inputTruncated": len(received) > MAX_SESSIONS,
         "stormCount": len(episodes),
-        "storms": episodes[:MAX_ROWS],
+        "storms": envelope(episodes, limit),
         "slowLoginCount": sum(1 for r in slow_logins if r["loginMs"] >= slow_login_ms),
-        "slowestByLogin": [_contrib(r, "loginMs") for r in slow_logins[:MAX_ROWS]],
-        "slowestByBoot": [_contrib(r, "bootMs") for r in slow_boots[:MAX_ROWS]],
+        "slowestByLogin": envelope([_contrib(r, "loginMs") for r in slow_logins], limit),
+        "slowestByBoot": envelope([_contrib(r, "bootMs") for r in slow_boots], limit),
         "failedLogins": len(failed),
         "thresholds": {
             "windowS": window_s,
