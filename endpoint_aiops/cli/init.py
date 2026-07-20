@@ -14,7 +14,8 @@ import typer
 import yaml
 
 from endpoint_aiops.cli._common import cli_errors, console
-from endpoint_aiops.config import CONFIG_DIR, CONFIG_FILE, DEFAULT_API_PATH
+from endpoint_aiops.config import CONFIG_DIR, CONFIG_FILE
+from endpoint_aiops.dialect import PRESETS
 from endpoint_aiops.governance.paths import ops_path
 from endpoint_aiops.secretstore import SecretStore, resolve_master_password
 
@@ -100,7 +101,39 @@ def init_cmd() -> None:
             targets = [t for t in targets if t.get("name") != name]
 
         host = typer.prompt("Host (IP or FQDN of the Endpoint server)").strip()
-        port = typer.prompt("HTTPS port", default=443, type=int)
+
+        # The dialect decides the port and API base path, so it is asked FIRST.
+        # Leaving it unstated used to silently configure the generic placeholder
+        # shape (/api/v2.0 on 443), which no real management server serves.
+        console.print(
+            "\n[dim]Which management server is this? The dialect sets the API "
+            "paths, port and base path.[/]"
+        )
+        for key, preset in sorted(PRESETS.items()):
+            note = ("neutral placeholder — you must describe your server's paths "
+                    "yourself in config.yaml"
+                    if key == "generic" else
+                    f"{preset.default_api_path} on port {preset.default_port} "
+                    f"(modelled from vendor docs, NOT live-verified)")
+            console.print(f"  [bold]{key}[/] — {note}")
+        dialect = typer.prompt("Dialect", default="generic").strip()
+        while dialect not in PRESETS:
+            console.print(f"[red]Unknown dialect '{dialect}'.[/]")
+            dialect = typer.prompt(
+                f"Dialect ({', '.join(sorted(PRESETS))})", default="generic"
+            ).strip()
+        chosen = PRESETS[dialect]
+        if dialect == "generic":
+            console.print(
+                "[yellow]![/] The generic dialect is a placeholder, not a real "
+                "vendor API. Until you add a dialect: block describing your "
+                "server's paths, calls will 404."
+            )
+
+        scheme = typer.prompt("Scheme (https or http)", default="https").strip()
+        while scheme not in ("https", "http"):
+            scheme = typer.prompt("Scheme must be 'https' or 'http'", default="https").strip()
+        port = typer.prompt("Port", default=chosen.default_port, type=int)
         console.print("[dim]Lab / self-signed certificate setups can answer No here.[/]")
         verify_ssl = typer.confirm(
             "Verify TLS certificate? (No for self-signed lab certs)", default=True
@@ -117,13 +150,19 @@ def init_cmd() -> None:
             "name": name,
             "host": host,
             "port": port,
+            "scheme": scheme,
             "verify_ssl": verify_ssl,
-            "api_path": DEFAULT_API_PATH,
+            "api_path": chosen.default_api_path,
+            "dialect": dialect,
         }
         targets.append(entry)
         existing_names.add(name)
         _write_targets(targets)
-        console.print(f"[green]✓ Saved target '{name}' (API key stored encrypted).[/]")
+        console.print(
+            f"[green]✓ Saved target '{name}'[/] — dialect [bold]{dialect}[/], "
+            f"{scheme}://{host}:{port}{chosen.default_api_path} "
+            f"(API key stored encrypted)."
+        )
 
         if not typer.confirm("\nAdd another target?", default=False):
             break

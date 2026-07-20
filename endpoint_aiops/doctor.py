@@ -71,7 +71,7 @@ def run_doctor(skip_auth: bool = False) -> int:
     for target in config.targets:
         try:
             conn = mgr.connect(target.name)
-            info = conn.get(conn.target.dialect_obj.version_path)
+            info = conn.get(conn.target.dialect_obj.path_for("version"))
             version = info.get("version", "?") if isinstance(info, dict) else "?"
             _console.print(
                 f"[green]✓ Connected to '{target.name}' ({target.host}) "

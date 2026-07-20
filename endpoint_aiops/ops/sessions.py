@@ -37,7 +37,7 @@ def list_sessions(conn: Any, since_hours: int = 24) -> list[dict]:
     """[READ] Recent login/boot sessions from the management server."""
     hours = max(1, min(int(since_hours), 24 * 30))
     d = dialect_of(conn)
-    raw = conn.get(d.sessions_path, params={"since_hours": hours})
+    raw = conn.get(d.path_for("sessions"), params={"since_hours": hours})
     return [_normalise(r, d) for r in as_list(raw, d.list_key)]
 
 

@@ -25,10 +25,52 @@ so the result is reproducible and auditable — not a subjective "seems fine".
   the secure-by-default approver gate refuses `high`-risk writes with no
   `rules.yaml` and no `ENDPOINT_AUDIT_APPROVED_BY`.
 
-What it does **not** guarantee: that the REST paths (`/endpoints`, `/sessions`,
-`/version`), field names, and Bearer-auth semantics match any specific
-endpoint-management product. They are modelled **generically** — this is the
-single largest verification gap for this tool.
+What it does **not** guarantee: that the REST paths, field names, and
+Bearer-auth semantics match any specific endpoint-management product. This is
+the single largest verification gap for this tool.
+
+## Dialect verification status
+
+| Dialect | Transport | Status |
+|---------|-----------|--------|
+| `generic` | `/api/v2.0` on 443 | **Placeholder, not a real vendor API.** Nothing serves this shape out of the box; it is a starting point for a hand-written `dialect:` block. |
+| `igel-ums` | `/umsapi/v3` on 8443 | **UNKNOWN — pending live.** |
+
+### `igel-ums` is modelled from documentation, NOT verified
+
+The IGEL preset's resource paths, field aliases, port and API base path are
+taken from IGEL's published IGEL Management Interface (IMI) documentation.
+**None of it has been run against a real IGEL UMS.** IGEL UMS has no free
+edition, so it cannot be verified on the maintainer's hardware — this is an
+access limitation, not a decision to skip the work. Status is recorded as
+**UNKNOWN — pending live**, not "correct".
+
+Least certain, in order:
+
+- `profile_path` (`/thinclients/{id}/profile`) and `reboot_path`
+  (`/thinclients/{id}/commands/reboot`) — both **write** paths, so a wrong
+  guess here is the most expensive one to discover in production.
+- `list_key` — assumed `None` (IMI returns a bare array). If IMI wraps its
+  lists in an envelope, every list read returns empty.
+- The field aliases (`unitID`, `unitName`, `firmwareVersion`, …) — a miss here
+  degrades to `null` fields rather than an error, so it will not announce itself.
+
+Two things are asserted rather than guessed and should stay that way:
+
+- **IMI exposes no login/boot session resource**, so `sessions_path` is `None`
+  and the session tools raise `UnsupportedResource` naming the absent resource.
+  If a live run finds IMI *does* expose one, that is a finding — add the path
+  rather than assuming the tools were broken.
+- **IMI does not accept a static Bearer token** (it uses HTTP Basic / a
+  message-auth handshake). A live run therefore needs an auth adapter or a
+  gateway in front. Until that exists, the IGEL preset cannot be end-to-end
+  verified even with a server available.
+
+> Why this section is worded so cautiously: the previous default silently
+> presented `/api/v2.0` on 443 as though it targeted IGEL. It targeted nothing —
+> the first probe would 404 — and the mock suite was green because the fixtures
+> asserted the same invented shape the code called. Doc-modelled paths are a
+> weaker claim than mock-tested ones, not a stronger one.
 
 ## Prerequisites for a live run
 
@@ -110,9 +152,13 @@ do not silently pass.
 ## Criteria to consider it live-verified
 
 1. Every checklist box above is ticked against at least one real
-   endpoint-management server, and the **product and version are recorded**
-   (e.g. "verified against <product> <version>") — because the REST paths are
-   generic, the specific dialect verified is the finding.
+   endpoint-management server, and the **product, version and dialect are
+   recorded** (e.g. "verified against <product> <version> via dialect X") —
+   because the REST paths are dialect-specific, *which dialect was verified* is
+   the finding. Ticking this list against `generic` verifies nothing about
+   `igel-ums`, and vice versa: the table in "Dialect verification status" is
+   per-row, and a row only moves off UNKNOWN when that dialect was the one
+   exercised.
 2. Any path or field-shape mismatch found during the run is fixed and covered by
    a regression test.
 3. The run is written up with the date and package version, matching how the

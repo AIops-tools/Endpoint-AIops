@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.5.0 — 2026-07-20
+
+### Fixed
+- **A real IGEL UMS dialect.** The default pointed at `/api/v2.0` on port 443; IGEL's IMI API is `/umsapi/v3` on **8443**, so both the prefix and the port were wrong and the first probe could never succeed.
+- **New `scheme:`** (default `https`) — the base URL was hardcoded..
+- Harness: a write whose response is lost is audited `status=unknown`, not `error` — it may have taken effect. Undo tokens gain `effectVerified` (undo.db migrated in place).
+- Harness: a dry-run no longer records an undo token, and no longer requires a named approver. Guards now run on the preview path.
+- Truncated strings end in an ellipsis instead of being cut silently; error messages are capped at 800 chars, not 300.
+
+See RELEASE_NOTES.md for the full detail.
+
 ## v0.3.0 — 2026-07-17
 
 ### Added

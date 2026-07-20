@@ -67,13 +67,14 @@ def _last_seen_hours(value: Any) -> float | None:
 def list_endpoints(conn: Any) -> list[dict]:
     """[READ] All managed endpoints, normalised to the stable inventory shape."""
     d = dialect_of(conn)
-    return [_normalise(r, d) for r in as_list(conn.get(d.endpoints_path), d.list_key)]
+    return [_normalise(r, d) for r in as_list(conn.get(d.path_for("endpoints")),
+                                              d.list_key)]
 
 
 def get_endpoint(conn: Any, endpoint_id: str) -> dict:
     """[READ] One managed endpoint by id, normalised."""
     d = dialect_of(conn)
-    raw = conn.get(d.endpoint_path.format(id=_seg(endpoint_id)))
+    raw = conn.get(d.path_for("endpoint").format(id=_seg(endpoint_id)))
     if isinstance(raw, dict) and raw:
         return _normalise(raw, d)
     raise KeyError(f"Endpoint '{endpoint_id}' not found.")

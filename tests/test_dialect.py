@@ -6,7 +6,12 @@ import pytest
 import yaml
 
 from endpoint_aiops.config import TargetConfig
-from endpoint_aiops.dialect import DEFAULT_DIALECT, Dialect, resolve
+from endpoint_aiops.dialect import (
+    DEFAULT_DIALECT,
+    Dialect,
+    UnsupportedResource,
+    resolve,
+)
 from endpoint_aiops.ops import inventory, sessions
 
 _OVERLAY = Path(__file__).resolve().parent.parent / "deploy" / "igel-ums" / "dialect.yaml"
@@ -93,3 +98,105 @@ def test_igel_ums_overlay_dialect_resolves():
     assert d.endpoints_path == "/thinclients"
     assert d.pick({"unitID": "42"}, "id") == "42"
     assert d.pick({"firmwareVersion": "12.6"}, "osBuild") == "12.6"
+
+
+# ── IGEL preset + resource-absence (bug class 7: an invented API shape) ──────
+
+
+@pytest.mark.unit
+def test_igel_preset_is_selectable_by_name():
+    """An operator must not have to reverse-engineer IGEL's shape from scratch."""
+    d = resolve("igel-ums")
+    assert d.name == "igel-ums"
+    assert d.endpoints_path == "/thinclients"
+    assert d.version_path == "/serverstatus"
+
+
+@pytest.mark.unit
+def test_igel_preset_carries_imi_transport_defaults():
+    """IMI is /umsapi/v3 on 8443 — the generic /api/v2.0 on 443 404s on IGEL."""
+    d = resolve("igel-ums")
+    assert d.default_port == 8443
+    assert d.default_api_path == "/umsapi/v3"
+
+
+@pytest.mark.unit
+def test_generic_placeholder_keeps_its_legacy_transport_defaults():
+    assert DEFAULT_DIALECT.default_port == 443
+    assert DEFAULT_DIALECT.default_api_path == "/api/v2.0"
+
+
+@pytest.mark.unit
+def test_igel_preset_maps_imi_field_names():
+    d = resolve("igel-ums")
+    assert d.pick({"unitID": "42"}, "id") == "42"
+    assert d.pick({"unitName": "Reception"}, "hostname") == "Reception"
+    assert d.pick({"firmwareVersion": "12.6"}, "osBuild") == "12.6"
+
+
+@pytest.mark.unit
+def test_igel_has_no_sessions_resource_and_says_so():
+    """IMI exposes no session resource. Absent must not be faked into a URL."""
+    d = resolve("igel-ums")
+    with pytest.raises(UnsupportedResource) as ei:
+        d.path_for("sessions")
+    assert "does not expose" in str(ei.value)
+
+
+@pytest.mark.unit
+def test_unsupported_resource_does_not_read_as_a_missing_config_key(capsys):
+    """The CLI labels bare KeyErrors 'Missing required key' — this must dodge it.
+
+    Regression for the cicd-aiops bug: a correct diagnosis under a wrong
+    headline sent operators hunting a config problem that did not exist.
+    """
+    import typer
+
+    from endpoint_aiops.cli._common import cli_errors
+
+    assert issubclass(UnsupportedResource, KeyError)  # legacy handlers keep working
+
+    @cli_errors
+    def boom():
+        resolve("igel-ums").path_for("sessions")
+
+    with pytest.raises(typer.Exit):
+        boom()
+    out = capsys.readouterr().out
+    assert "Missing required key" not in out
+    assert "does not expose" in out
+    assert not out.count('\\"')  # KeyError's repr quotes are stripped
+
+
+@pytest.mark.unit
+def test_session_read_on_igel_teaches_instead_of_calling_an_invented_path():
+    target = _target("igel-ums")
+    conn = _Conn(target, {})
+    with pytest.raises(UnsupportedResource):
+        sessions.list_sessions(conn)
+
+
+@pytest.mark.unit
+def test_preset_can_be_layered_with_overrides():
+    """A site whose IMI differs states only the delta, keeping the rest."""
+    d = resolve({"preset": "igel-ums", "sessions_path": "/usage",
+                 "fields": {"user": ["lastUser"]}})
+    assert d.endpoints_path == "/thinclients"      # from the preset
+    assert d.path_for("sessions") == "/usage"      # overridden
+    assert d.pick({"lastUser": "amy"}, "user") == "amy"
+    assert d.pick({"unitID": "42"}, "id") == "42"  # preset fields survive
+
+
+@pytest.mark.unit
+def test_unknown_preset_name_is_a_teaching_error():
+    with pytest.raises(UnsupportedResource) as ei:
+        resolve("igel-umms")
+    assert "igel-ums" in str(ei.value)  # names the available presets
+
+
+@pytest.mark.unit
+def test_generic_dialect_still_exposes_every_resource():
+    """The legacy shape is unchanged for anyone already relying on it."""
+    for resource in ("endpoints", "endpoint", "sessions", "version",
+                     "profile", "reboot"):
+        assert DEFAULT_DIALECT.path_for(resource)

@@ -1,10 +1,15 @@
 # `deploy/igel-ums/` — endpoint-aiops against an IGEL UMS (overlay)
 
-> **One distribution target, not the core.** endpoint-aiops stays **vendor-neutral**
-> — it speaks a generic endpoint-management REST shape. This folder is a thin
-> **overlay** that points it at a specific management server via a *dialect* (a
-> paths + field-name mapping). No vendor names live in the installable package.
-> **Status: preview / `待核实`.**
+> **Superseded by a shipped preset.** `igel-ums` is now a built-in dialect: put
+> `dialect: igel-ums` on the target in `~/.endpoint-aiops/config.yaml` (or pick
+> it in `endpoint-aiops init`) and you get the IMI paths, port 8443 and base
+> path `/umsapi/v3` without copying anything from here. Keep using this overlay
+> only if your UMS differs from the preset and you need to override parts of it —
+> a `dialect:` block may name `preset: igel-ums` and state just the delta.
+>
+> **Status: `待核实` — modelled from IGEL's IMI documentation, NOT live-verified.**
+> See [`docs/VERIFICATION.md`](../../docs/VERIFICATION.md), where this is
+> recorded as UNKNOWN-pending-live.
 
 ## What a dialect is
 
@@ -13,12 +18,24 @@ shape (`id`, `hostname`, `online`, `agentVersion`, `patchLevel`, …). Servers
 differ in **resource paths** and **field names**; a `dialect:` block on a target
 in `config.yaml` describes those, so the same tools (`overview`, `endpoint_list`,
 `drift_report`, `endpoint_health_score`, …) work unchanged. The built-in default
-is the generic shape; this overlay supplies an **IGEL UMS (IMI)** mapping.
+is a neutral **placeholder** that no real server serves; the shipped `igel-ums`
+preset supplies an **IGEL UMS (IMI)** mapping, and this overlay shows the same
+mapping in longhand for anyone who needs to adjust it.
 
 ## Use
 
-Merge the `dialect:` block from [`dialect.yaml`](dialect.yaml) into your target in
-`~/.endpoint-aiops/config.yaml`, then run as usual:
+Simplest path — name the shipped preset:
+
+```yaml
+targets:
+  - name: ums1
+    host: ums.example.local
+    dialect: igel-ums
+```
+
+To override part of it, merge the `dialect:` block from
+[`dialect.yaml`](dialect.yaml) into your target in `~/.endpoint-aiops/config.yaml`
+(add `preset: igel-ums` to keep the rest of the preset), then run as usual:
 
 ```bash
 endpoint-aiops doctor

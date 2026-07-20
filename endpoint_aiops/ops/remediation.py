@@ -31,7 +31,7 @@ def assign_profile(conn: Any, endpoint_id: str, profile_id: str) -> dict:
     """
     prior = get_endpoint(conn, endpoint_id)
     conn.post(
-        dialect_of(conn).profile_path.format(id=_seg(endpoint_id)),
+        dialect_of(conn).path_for("profile").format(id=_seg(endpoint_id)),
         json={"profile_id": profile_id},
     )
     return {
@@ -49,7 +49,7 @@ def reboot_endpoint(conn: Any, endpoint_id: str) -> dict:
     audit but the tool intentionally offers no undo descriptor.
     """
     prior = get_endpoint(conn, endpoint_id)
-    conn.post(dialect_of(conn).reboot_path.format(id=_seg(endpoint_id)))
+    conn.post(dialect_of(conn).path_for("reboot").format(id=_seg(endpoint_id)))
     return {
         "action": "reboot_endpoint",
         "endpointId": endpoint_id,

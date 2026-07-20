@@ -22,9 +22,10 @@ import endpoint_aiops.secretstore as ss
 MASTER_PW = "init-master-pw"
 API_KEY = "endpoint-api-key-0123"
 
-# Wizard answers: name, host, accept default port, accept TLS-verify default
-# (True), no second target, decline the trailing doctor run.
-WIZARD_INPUT = "fleet1\nmgmt.example.com\n\n\nn\nn\n"
+# Wizard answers: name, host, accept default dialect (generic), accept default
+# scheme (https), accept default port, accept TLS-verify default (True), no
+# second target, decline the trailing doctor run.
+WIZARD_INPUT = "fleet1\nmgmt.example.com\n\n\n\n\nn\nn\n"
 
 
 @pytest.fixture
@@ -63,15 +64,17 @@ def test_init_writes_config_with_entered_values(init_home):
             "name": "fleet1",
             "host": "mgmt.example.com",
             "port": 443,
+            "scheme": "https",
             "verify_ssl": True,  # accepted TLS confirm default=True must land
             "api_path": "/api/v2.0",
+            "dialect": "generic",  # written explicitly — never left implicit
         }
     ]
 
 
 @pytest.mark.unit
 def test_init_tls_confirm_can_be_declined_for_lab_certs(init_home):
-    result = _run_init("fleet1\nmgmt.example.com\n\nn\nn\nn\n")
+    result = _run_init("fleet1\nmgmt.example.com\n\n\n\nn\nn\nn\n")
     assert result.exit_code == 0, result.output
     raw = yaml.safe_load((init_home / "config.yaml").read_text("utf-8"))
     assert raw["targets"][0]["verify_ssl"] is False
@@ -113,7 +116,7 @@ def test_init_accepting_doctor_confirm_runs_doctor(init_home, monkeypatch):
     calls: list[bool] = []
     monkeypatch.setattr(doctor_mod, "run_doctor", lambda: calls.append(True) or 0)
     # Empty last answer accepts the confirm's default=True.
-    result = _run_init("fleet1\nmgmt.example.com\n\n\nn\n\n")
+    result = _run_init("fleet1\nmgmt.example.com\n\n\n\n\nn\n\n")
     assert result.exit_code == 0, result.output
     assert calls == [True]
 
@@ -123,7 +126,49 @@ def test_init_overwrite_existing_target(init_home):
     result = _run_init()
     assert result.exit_code == 0, result.output
     # Same name again: confirm overwrite, new host, accept defaults.
-    result = _run_init("fleet1\ny\nmgmt2.example.com\n\n\nn\nn\n")
+    result = _run_init("fleet1\ny\nmgmt2.example.com\n\n\n\n\nn\nn\n")
     assert result.exit_code == 0, result.output
     raw = yaml.safe_load((init_home / "config.yaml").read_text("utf-8"))
     assert [t["host"] for t in raw["targets"]] == ["mgmt2.example.com"]
+
+
+@pytest.mark.unit
+def test_init_igel_preset_writes_igel_port_and_api_path(init_home):
+    """Choosing igel-ums must configure IMI's real transport, not the placeholder."""
+    result = _run_init("fleet1\nums.example.com\nigel-ums\n\n\n\nn\nn\n")
+    assert result.exit_code == 0, result.output
+    target = yaml.safe_load((init_home / "config.yaml").read_text("utf-8"))["targets"][0]
+    assert target["dialect"] == "igel-ums"
+    assert target["port"] == 8443
+    assert target["api_path"] == "/umsapi/v3"
+
+
+@pytest.mark.unit
+def test_init_names_the_dialect_it_configured(init_home):
+    """The wizard must say which dialect it set up, not leave it implicit."""
+    result = _run_init("fleet1\nums.example.com\nigel-ums\n\n\n\nn\nn\n")
+    assert "igel-ums" in result.output
+
+
+@pytest.mark.unit
+def test_init_warns_that_generic_is_a_placeholder(init_home):
+    result = _run_init()
+    assert "placeholder" in result.output
+
+
+@pytest.mark.unit
+def test_init_reprompts_on_an_unknown_dialect(init_home):
+    result = _run_init("fleet1\nmgmt.example.com\nnot-a-dialect\n\n\n\n\nn\nn\n")
+    assert result.exit_code == 0, result.output
+    assert "Unknown dialect" in result.output
+    target = yaml.safe_load((init_home / "config.yaml").read_text("utf-8"))["targets"][0]
+    assert target["dialect"] == "generic"
+
+
+@pytest.mark.unit
+def test_init_can_select_plain_http(init_home):
+    """The scheme knob must survive the wizard (bug class 8: no connection knob)."""
+    result = _run_init("fleet1\nmgmt.example.com\n\nhttp\n\n\nn\nn\n")
+    assert result.exit_code == 0, result.output
+    target = yaml.safe_load((init_home / "config.yaml").read_text("utf-8"))["targets"][0]
+    assert target["scheme"] == "http"

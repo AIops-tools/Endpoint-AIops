@@ -8,7 +8,8 @@ Governed AI-ops for **managed-endpoint fleets** — thin clients, VDI endpoints,
 and other centrally-managed devices — with a **built-in governance harness**:
 unified audit log, policy engine, token/runaway budget guard, undo-token
 recording, and graduated-autonomy risk tiers. Vendor-neutral: it talks to an
-endpoint-management server's REST API (Bearer auth). Self-contained: no
+endpoint-management server's REST API (Bearer auth) through a configurable
+**dialect** — see [Dialects](#dialects--which-server-are-you-actually-pointing-at). Self-contained: no
 dependencies beyond `httpx` and the MCP SDK. The test suite is mock-based; the
 endpoint-management REST paths have not yet been exercised against a live
 management server — see [`docs/VERIFICATION.md`](docs/VERIFICATION.md).
@@ -139,10 +140,47 @@ This is the **IT-endpoint** member of the AIops-tools family (governed AI-ops
 with audit + budget + undo + risk tiers). For **OT / industrial edge**
 (Modbus, OPC-UA, PROFINET, …) see the separate `industrial-aiops` line.
 
+## Dialects — which server are you actually pointing at?
+
+A **dialect** is the management server's API shape: resource paths, response
+field names, and the transport defaults (port + API base path). Set it per
+target in `config.yaml`; `endpoint-aiops init` now asks for it and prints which
+one it configured.
+
+| Dialect | Transport | Status |
+|---------|-----------|--------|
+| `generic` (default) | `/api/v2.0` on 443 | **Neutral placeholder — not a real vendor API.** Useful only once you describe your server's paths in a `dialect:` block. |
+| `igel-ums` | `/umsapi/v3` on **8443** | IGEL UMS via the IGEL Management Interface (IMI). **Modelled from IGEL's published IMI documentation — NOT live-verified.** |
+
+```yaml
+targets:
+  - name: ums1
+    host: ums.example.local
+    dialect: igel-ums        # sets IMI paths, port 8443, base path /umsapi/v3
+    scheme: https            # or 'http' for a reverse-proxied server
+    verify_ssl: false        # self-signed lab UMS only
+```
+
+The `generic` default is **not** an IGEL configuration and never was: IGEL
+serves IMI at `/umsapi/v3` on 8443, so a target left on the generic shape 404s
+on its first probe. That mismatch is why the preset exists.
+
+Where a server genuinely has no such resource, the dialect says so rather than
+guessing a URL — IMI exposes no login/boot session resource, so `session_list`
+and `login_storm_analysis` on an `igel-ums` target return a teaching error
+naming the absent resource instead of calling an invented path.
+
+⚠️ **IMI auth**: IGEL's IMI uses HTTP Basic / a message-auth handshake, not the
+static Bearer token this tool sends. A live IGEL integration also needs an auth
+adapter or a gateway that presents Bearer. The dialect maps paths and fields
+only.
+
 ## Status
 
-The test suite is mock-based. The endpoint-management REST paths are modelled
-generically (`/endpoints`, `/sessions`, `/version`) and have not yet been
-exercised against a real server; [`docs/VERIFICATION.md`](docs/VERIFICATION.md)
-defines the checklist a live run must cover. Missing a capability or a server
+The test suite is mock-based. **No dialect in this package has been exercised
+against a real management server.** The `generic` shape is a placeholder, and
+the `igel-ums` preset is modelled from vendor documentation — recorded as
+UNKNOWN-pending-live in [`docs/VERIFICATION.md`](docs/VERIFICATION.md), which
+defines the checklist a live run must cover. IGEL UMS has no free edition, so it
+cannot be verified on the maintainer's hardware. Missing a capability or a server
 dialect? Open an issue or PR — contributions welcome.

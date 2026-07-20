@@ -13,7 +13,12 @@ uv tool install endpoint-aiops
 In your endpoint-management server's web UI, create an API key (usually under a
 Credentials / API Keys section). Copy the key. endpoint-aiops sends it as
 `Authorization: Bearer <key>` against the REST API base
-`https://<host>:<port><api_path>`.
+`<scheme>://<host>:<port><api_path>` — where the port and API base path come
+from the target's **dialect** unless you state them yourself.
+
+⚠️ IGEL's IMI does **not** accept a static Bearer token (it uses HTTP Basic / a
+message-auth handshake), so an `igel-ums` target also needs an auth adapter or a
+gateway that presents Bearer.
 
 ## 3. Onboard
 
@@ -29,10 +34,19 @@ The wizard collects (non-secret) connection details into
 targets:
   - name: ums1
     host: 10.0.0.30
-    port: 443
+    dialect: igel-ums          # sets IMI paths + port 8443 + /umsapi/v3
+    scheme: https              # 'http' for a reverse-proxied server
     verify_ssl: false          # self-signed lab certs only
-    api_path: /api/v2.0
 ```
+
+The wizard asks which **dialect** to use and prints the one it configured.
+`generic` (the default) is a neutral placeholder — `/api/v2.0` on 443 — that no
+shipped management server actually serves; it is only useful once you describe
+your server's paths in a `dialect:` block. `igel-ums` targets IGEL UMS via IMI
+and is **modelled from vendor documentation, not live-verified**.
+
+`port` and `api_path` are still accepted and win over the dialect's defaults
+when you set them.
 
 ## 4. Non-interactive use (MCP server / CI / cron)
 

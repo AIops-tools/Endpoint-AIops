@@ -29,7 +29,12 @@ CONFIG_DIR = ops_home()
 CONFIG_FILE = CONFIG_DIR / "config.yaml"
 ENV_FILE = CONFIG_DIR / ".env"
 
-DEFAULT_API_PATH = "/api/v2.0"
+# NOTE: there is deliberately no module-level DEFAULT_API_PATH here any more.
+# A fixed "/api/v2.0" default was the bug: it is a shape no shipped management
+# server serves, and it silently overrode the API base path of any dialect that
+# knew better (IGEL UMS serves IMI at /umsapi/v3 on 8443). The per-dialect
+# ``Dialect.default_api_path`` is the single source of that default now — keep
+# it that way rather than reintroducing a constant that outranks the dialect.
 
 # Legacy env-var prefix/suffix; also used by the migration helper.
 SECRET_ENV_PREFIX = "ENDPOINT_"  # nosec B105 — env-var name, not a secret
@@ -70,18 +75,44 @@ class TargetConfig:
     """A connection target for an endpoint-management REST API.
 
     The API key is sourced from the encrypted secret store (see ``api_key``),
-    never the config file. ``host`` is the management server; ``port`` defaults to
-    the HTTPS port 443; ``api_path`` is the REST base path (``/api/v2.0``).
+    never the config file. ``host`` is the management server. ``port`` and
+    ``api_path`` default to **the dialect's** transport defaults rather than a
+    fixed 443 + ``/api/v2.0``: a preset such as ``igel-ums`` serves IMI at
+    ``/umsapi/v3`` on 8443, and hardcoding the generic pair meant selecting that
+    server still produced a 404 on the first probe.
     """
 
     name: str
     host: str
-    port: int = 443
+    port: int = 0
     verify_ssl: bool = True
-    api_path: str = DEFAULT_API_PATH
-    # Optional per-target management-server dialect (resource paths + field
-    # aliases). None = the built-in generic shape. See endpoint_aiops.dialect.
-    dialect: dict | None = None
+    api_path: str = ""
+    scheme: str = "https"
+    """Transport scheme — ``https`` (default) or ``http``.
+
+    Defaults to ``https``, so nothing changes for an existing config. It exists
+    because a self-hosted management server often sits on plain HTTP behind a
+    reverse proxy, and the URL was previously hardcoded to ``https://`` with no
+    way to override it — which made such an instance simply unreachable, with a
+    TLS record-layer error as the only clue.
+    """
+
+    # Per-target management-server dialect: a preset name (``"igel-ums"``) or a
+    # dict of resource paths + field aliases, optionally naming a ``preset``.
+    # None = the built-in generic placeholder. See endpoint_aiops.dialect.
+    dialect: dict | str | None = None
+
+    def __post_init__(self) -> None:
+        if self.scheme not in ("https", "http"):
+            raise ValueError(
+                f"Target '{self.name}': scheme must be 'https' or 'http', "
+                f"got '{self.scheme}'."
+            )
+        dialect = self.dialect_obj
+        if not self.port:
+            object.__setattr__(self, "port", dialect.default_port)
+        if not self.api_path:
+            object.__setattr__(self, "api_path", dialect.default_api_path)
 
     @property
     def api_key(self) -> str:
@@ -89,11 +120,11 @@ class TargetConfig:
 
     @property
     def base_url(self) -> str:
-        return f"https://{self.host}:{self.port}{self.api_path}"
+        return f"{self.scheme}://{self.host}:{self.port}{self.api_path}"
 
     @property
     def dialect_obj(self) -> Dialect:
-        """Resolved Dialect for this target (generic default when unset)."""
+        """Resolved Dialect for this target (generic placeholder when unset)."""
         from endpoint_aiops.dialect import resolve
 
         return resolve(self.dialect)
@@ -136,9 +167,12 @@ def load_config(config_path: Path | None = None) -> AppConfig:
         TargetConfig(
             name=t["name"],
             host=t["host"],
-            port=t.get("port", 443),
+            # 0 / "" mean "unset" — __post_init__ fills them from the dialect, so
+            # a preset's own port and API base path are not silently overwritten.
+            port=t.get("port", 0),
             verify_ssl=t.get("verify_ssl", True),
-            api_path=t.get("api_path", DEFAULT_API_PATH),
+            api_path=t.get("api_path", ""),
+            scheme=t.get("scheme", "https"),
             dialect=t.get("dialect"),
         )
         for t in raw.get("targets", [])
