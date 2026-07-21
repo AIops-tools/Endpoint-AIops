@@ -212,14 +212,47 @@ def test_path_traversal_id_is_url_encoded():
 
 
 @pytest.mark.unit
-def test_dry_run_gates_destructive_cli():
-    """endpoint reboot --dry-run must not touch the connection."""
+def test_dry_run_gates_destructive_cli(monkeypatch):
+    """endpoint reboot --dry-run renders the banner and issues no mutating call.
+
+    The preview reads (it routes through the governed twin, which resolves the
+    path and fetches the before-state), so a connection is required — but the
+    reboot POST must never fire.
+    """
+    import mcp_server.tools.remediation as gov
     from endpoint_aiops.cli import app
+
+    conn = MagicMock(name="conn")
+    conn.get.return_value = {"id": "tc01", "online": True, "last_seen_hours": 0.1}
+    monkeypatch.setattr(gov, "_get_connection", lambda target=None: conn)
 
     runner = CliRunner()
     result = runner.invoke(app, ["endpoint", "reboot", "tc01", "--dry-run"])
-    assert result.exit_code == 0
+    assert result.exit_code == 0, result.output
     assert "DRY-RUN" in result.output
+    conn.post.assert_not_called()
+
+
+@pytest.mark.unit
+def test_dry_run_without_a_reachable_server_refuses_rather_than_reassures(
+    tmp_path, monkeypatch
+):
+    """No config → the preview cannot answer, so it refuses instead of guessing.
+
+    A preview is a claim about a real server. With no server to ask, the honest
+    answer is the connection error, not a green banner describing a reboot that
+    was never checked against anything.
+    """
+    import mcp_server._shared as shared
+    from endpoint_aiops.cli import app
+
+    monkeypatch.setenv("ENDPOINT_AIOPS_CONFIG", str(tmp_path / "absent.yaml"))
+    monkeypatch.setattr(shared, "_conn_mgr", None)
+
+    result = CliRunner().invoke(app, ["endpoint", "reboot", "tc01", "--dry-run"])
+    assert result.exit_code == 1
+    assert "DRY-RUN" not in result.output
+    assert "Config file not found" in result.output
 
 
 @pytest.mark.unit
@@ -365,3 +398,33 @@ def test_connection_bearer_auth_and_error_translation(monkeypatch):
         conn.get("/notfound")
     assert ei.value.status_code == 404
     assert "not found" in str(ei.value).lower()
+
+
+@pytest.mark.unit
+def test_risk_level_agrees_with_read_write_docstring_tag():
+    """The two write-markers must never drift apart.
+
+    A tool's ``risk_level`` decides its audit tier and whether it gets dry-run /
+    undo handling; its ``[READ]``/``[WRITE]`` docstring tag is what the docs and
+    capability tables are built from. If a ``[WRITE]`` were left ``risk_level=low``
+    it would be audited as a read and skip the write machinery — this test caught
+    16 such mislabels line-wide once, so it is kept even though read-only mode
+    (its original motivation) is gone.
+    """
+    from mcp_server import server
+
+    untagged, mismatched = [], []
+    for name, tool in server.mcp._tool_manager._tools.items():
+        doc = (tool.fn.__doc__ or "").lstrip()
+        if doc.startswith("[READ]"):
+            tagged_as_read = True
+        elif doc.startswith("[WRITE]"):
+            tagged_as_read = False
+        else:
+            untagged.append(name)
+            continue
+        if tagged_as_read != (getattr(tool.fn, "_risk_level", "low") == "low"):
+            mismatched.append(name)
+
+    assert not untagged, f"tools missing a [READ]/[WRITE] docstring tag: {untagged}"
+    assert not mismatched, f"risk_level disagrees with the docstring tag: {mismatched}"

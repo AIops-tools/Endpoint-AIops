@@ -21,13 +21,16 @@ so the result is reproducible and auditable — not a subjective "seems fine".
 - `endpoint_assign_profile` records the correct inverse undo descriptor from the
   **captured** prior profile (tested against a mocked connection);
   `endpoint_reboot` declares no undo and captures the prior online state.
-- Governance persistence: audited rows actually land in the SQLite audit DB, and
-  the secure-by-default approver gate refuses `high`-risk writes with no
-  `rules.yaml` and no `ENDPOINT_AUDIT_APPROVED_BY`.
+- Governance persistence: audited rows actually land in the SQLite audit DB. The
+  harness authorizes nothing — there is no read-only, deny-rule, or approver gate
+  to test.
 
-What it does **not** guarantee: that the REST paths, field names, and
-Bearer-auth semantics match any specific endpoint-management product. This is
-the single largest verification gap for this tool.
+What it does **not** guarantee: that the REST paths, field names, or the
+authentication scheme match any specific endpoint-management product. The auth
+strategies are unit-tested for *shape* (Basic login, cookie reuse, one handshake
+per connection) against a mocked transport — which proves the code does what it
+was told to do, not that any server agrees. This is the single largest
+verification gap for this tool.
 
 ## Dialect verification status
 
@@ -38,33 +41,63 @@ the single largest verification gap for this tool.
 
 ### `igel-ums` is modelled from documentation, NOT verified
 
-The IGEL preset's resource paths, field aliases, port and API base path are
-taken from IGEL's published IGEL Management Interface (IMI) documentation.
-**None of it has been run against a real IGEL UMS.** IGEL UMS has no free
-edition, so it cannot be verified on the maintainer's hardware — this is an
-access limitation, not a decision to skip the work. Status is recorded as
+The IGEL preset — **resource paths, field aliases, port, API base path, and
+authentication** — is derived from IGEL's published IGEL Management Interface
+(IMI) documentation. **None of it has been run against a real IGEL UMS.** IGEL
+UMS has no free edition, so it cannot be verified on the maintainer's hardware —
+this is an access limitation, not a decision to skip the work. Status is
 **UNKNOWN — pending live**, not "correct".
 
-Least certain, in order:
+The auth scheme is on a firmer footing than the paths, and it is worth being
+precise about the difference rather than flattening both into "unverified":
 
-- `profile_path` (`/thinclients/{id}/profile`) and `reboot_path`
-  (`/thinclients/{id}/commands/reboot`) — both **write** paths, so a wrong
-  guess here is the most expensive one to discover in production.
-- `list_key` — assumed `None` (IMI returns a bare array). If IMI wraps its
-  lists in an envelope, every list read returns empty.
-- The field aliases (`unitID`, `unitName`, `firmwareVersion`, …) — a miss here
-  degrades to `null` fields rather than an error, so it will not announce itself.
+- **Paths and field aliases** — read off the documentation, nothing else.
+- **Auth (`imi-session`)** — documented in IGEL's IMI manual *and* corroborated
+  by three independent real-world clients (IGEL Community's PSIGEL
+  `New-UMSAPICookie`, the community curl HOWTO, ControlUp's UMS script), which
+  all perform the same Basic-login → `JSESSIONID`-cookie flow.
 
-Two things are asserted rather than guessed and should stay that way:
+That is still **not** live verification: this project has never executed it
+against an appliance. "Documented and corroborated by other people's working
+code" is a stronger claim than "doc-modelled" and a weaker one than "verified".
+
+#### What a live run must prove, most-likely-wrong first
+
+1. **Auth actually completes** — `POST /umsapi/v3/login` with Basic returns a
+   body carrying `message`, and the resulting `Cookie: JSESSIONID=…` is accepted
+   on the next call. The single most likely failure is the **session id's exact
+   shape**: IMI's documented `message` value is `"JSESSIONID=<hex>"`, i.e. a
+   complete `name=value` pair, not a bare id. `_session_cookie` handles both, but
+   only a live run proves which one a given UMS build sends.
+2. **`profile_path` and `reboot_path`** — both **write** paths, so a wrong guess
+   is the most expensive to discover in production. Verify with `--dry-run`
+   first, then against a throwaway device.
+3. **Permissions vs. emptiness** — an account without at least Read/Browse at
+   the Devices level gets an **empty list, not a 403**. Confirm the endpoint
+   count against the UMS console. An empty list here proves nothing on its own;
+   `doctor` now warns about exactly this, and the warning must not be dismissed.
+4. **`list_key`** — assumed `None` (IMI returns a bare array). If IMI wraps its
+   lists in an envelope, every list read returns empty — and per (3) that failure
+   is camouflaged.
+5. **Session expiry** — IMI sessions last 30 minutes on a *sliding* window. A
+   long-lived connection that idles past it should see a 401 naming the scheme;
+   confirm a reconnect recovers cleanly.
+6. **Field aliases** (`unitID`, `unitName`, `firmwareVersion`, …) — a miss
+   degrades to `null` fields rather than an error, so it will not announce itself.
+
+#### Asserted, not guessed — keep it that way
 
 - **IMI exposes no login/boot session resource**, so `sessions_path` is `None`
   and the session tools raise `UnsupportedResource` naming the absent resource.
   If a live run finds IMI *does* expose one, that is a finding — add the path
   rather than assuming the tools were broken.
-- **IMI does not accept a static Bearer token** (it uses HTTP Basic / a
-  message-auth handshake). A live run therefore needs an auth adapter or a
-  gateway in front. Until that exists, the IGEL preset cannot be end-to-end
-  verified even with a server available.
+- **IMI does not accept a static Bearer token.** The `igel-ums` dialect
+  therefore selects the `imi-session` strategy; it is not a Bearer dialect with
+  different paths. No gateway or adapter is required any more — but see (1)
+  above before treating the login as known-good.
+- **`/serverstatus` is IMI's only unauthenticated endpoint.** `doctor` uses it
+  for the reachability hop and then authenticates *separately*, so a green
+  reachability tick can never stand in for an auth check that never ran.
 
 > Why this section is worded so cautiously: the previous default silently
 > presented `/api/v2.0` on 443 as though it targeted IGEL. It targeted nothing —
@@ -74,12 +107,15 @@ Two things are asserted rather than guessed and should stay that way:
 
 ## Prerequisites for a live run
 
-A reachable endpoint-management server exposing a REST API over Bearer auth,
+A reachable endpoint-management server whose dialect this package can speak,
 with at least a handful of enrolled endpoints and recent login/boot sessions
 (a lab tenant or a small pilot group is enough). You need:
 
-- An **API key with least privilege** — read on inventory/sessions, plus write
-  on profile assignment and reboot for the write checks.
+- **Credentials with least privilege** — read on inventory/sessions, plus write
+  on profile assignment and reboot for the write checks. The shape depends on
+  the dialect: `generic` takes an API key; `igel-ums` takes a UMS administrator
+  **username + password** (set `username:` on the target, password in the
+  encrypted store) with at least Read/Browse at the Devices level.
 - A **throwaway/test endpoint** you are willing to reprofile and reboot. Never
   verify against a device someone is working on.
 
@@ -93,9 +129,16 @@ endpoint-aiops init            # encrypted secret store, TLS verify on by defaul
 Tick every box. A box that cannot be ticked is a verification gap — record it,
 do not silently pass.
 
-### 1. Connectivity (the fastest live gate)
-- [ ] `endpoint-aiops doctor` → all green (config, encrypted secret store, and a
-      real reachability probe against the server).
+### 1. Connectivity and authentication (the fastest live gate)
+- [ ] `endpoint-aiops doctor` → all green (config, encrypted secret store, a
+      real reachability probe, **and a separate authentication check**).
+- [ ] The doctor line naming the auth scheme matches what the product actually
+      wants. On a mismatch the 401 says so explicitly — that is a dialect
+      problem, not a credentials problem, and rotating the key will not fix it.
+- [ ] `doctor` did **not** print the "authenticated but returned no endpoints"
+      warning. If it did, resolve it before ticking anything below: on IGEL UMS
+      that is what insufficient Devices-level permission looks like, and every
+      subsequent read would be silently empty.
 
 ### 2. Reads return real, well-shaped data
 - [ ] `endpoint-aiops overview` → total/online/offline counts match the
@@ -135,11 +178,11 @@ do not silently pass.
       the audit row is tagged `medium`, records the prior online state, and
       declares **no** undo descriptor.
 
-### 6. Governance actually gates
-- [ ] With no `~/.endpoint-aiops/rules.yaml`, `endpoint assign-profile` (high)
-      is refused unless `ENDPOINT_AUDIT_APPROVED_BY` names an approver
-      (secure-by-default); with it set, the approver and
-      `ENDPOINT_AUDIT_RATIONALE` appear in the audit row.
+### 6. Audit is unbypassable — both entry points
+- [ ] Run a `high`-risk op (`endpoint assign-profile`) over MCP and the same op
+      over the CLI; confirm **both** land a row in `audit.db`, and that
+      `ENDPOINT_AUDIT_APPROVED_BY` / `ENDPOINT_AUDIT_RATIONALE`, when set, appear
+      on the row (recorded, never required — the skill authorizes nothing).
 - [ ] A tight poll loop trips the runaway budget guard rather than hammering the
       management API.
 - [ ] Relocation works: with `ENDPOINT_AIOPS_HOME` set, `audit.db`, the undo

@@ -13,7 +13,7 @@ from endpoint_aiops.cli._common import (
     cli_errors,
     console,
     double_confirm,
-    dry_run_print,
+    dry_run_preview,
     get_connection,
 )
 
@@ -58,10 +58,18 @@ def endpoint_assign_profile(
     from mcp_server.tools import remediation as gov
 
     if dry_run:
-        dry_run_print(
+        preview = gov.endpoint_assign_profile(
+            endpoint_id=endpoint_id, profile_id=profile_id, dry_run=True, target=target
+        )
+        would = preview.get("wouldAssign", {}) if isinstance(preview, dict) else {}
+        dry_run_preview(
+            preview,
             operation="assign_profile",
-            api_call=f"POST /endpoints/{endpoint_id}/profile",
-            parameters={"profile_id": profile_id},
+            api_call=f"POST {would.get('path', f'/endpoints/{endpoint_id}/profile')}",
+            parameters={
+                "profile_id": profile_id,
+                "replaces_profile_id": would.get("currentProfileId"),
+            },
         )
         return
     double_confirm(f"assign profile '{profile_id}' to", endpoint_id)
@@ -85,9 +93,16 @@ def endpoint_reboot(
     from mcp_server.tools import remediation as gov
 
     if dry_run:
-        dry_run_print(
+        preview = gov.endpoint_reboot(endpoint_id=endpoint_id, dry_run=True, target=target)
+        would = preview.get("wouldReboot", {}) if isinstance(preview, dict) else {}
+        dry_run_preview(
+            preview,
             operation="reboot_endpoint",
-            api_call=f"POST /endpoints/{endpoint_id}/reboot",
+            api_call=f"POST {would.get('path', f'/endpoints/{endpoint_id}/reboot')}",
+            parameters={
+                "currently_online": would.get("currentlyOnline"),
+                "last_seen_hours": would.get("lastSeenHours"),
+            },
         )
         return
     double_confirm("reboot", endpoint_id)

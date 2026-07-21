@@ -31,7 +31,7 @@ from `endpoint_list`).
 |------|------|----------------|---------------|
 | `endpoint_assign_profile` | **high** | `POST /endpoints/{id}/profile` | captures the prior profile; records an inverse "reassign prior profile" undo descriptor; CLI double-confirm + dry-run |
 | `endpoint_reboot` | medium | `POST /endpoints/{id}/reboot` | captures prior online state; no safe inverse, no undo; CLI double-confirm + dry-run |
-| `undo_apply` | medium | local undo store → inverse tool | executes a recorded inverse; the inverse runs through its own governed tool (its real risk tier + approver gate apply); single-use token; supports `dry_run` |
+| `undo_apply` | medium | local undo store → inverse tool | executes a recorded inverse; the inverse runs through its own governed tool (its real risk tier is recorded there); single-use token; supports `dry_run` |
 
 ## Out of scope (by design)
 
@@ -60,10 +60,3 @@ count matching the limit. When it is `true`, re-run with a higher `limit`.
 Companion totals (`driftedCount`, `behindCount`, `stormCount`,
 `nonCompliantCount`, the health `summary`) are always the full, uncapped
 figures.
-
-## Read-only mode
-
-Set `ENDPOINT_READ_ONLY=1` and the three write tools are not registered at all —
-they never appear in `list_tools()`, and the governance harness refuses writes
-independently, so the CLI is covered too. See
-[agent-guardrails.md](agent-guardrails.md).

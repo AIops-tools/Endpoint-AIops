@@ -11,6 +11,7 @@ import pytest
 import yaml
 from rich.console import Console
 
+import endpoint_aiops.auth as auth
 import endpoint_aiops.config as config_mod
 import endpoint_aiops.connection as connection_mod
 import endpoint_aiops.doctor as doctor_mod
@@ -56,12 +57,33 @@ _TARGET = {"name": "fleet1", "host": "mgmt.example.com", "port": 443}
 
 
 class _FakeConn:
-    def __init__(self, target) -> None:
-        self.target = target
+    """Stands in for EndpointConnection across doctor's three-step check.
 
-    def get(self, path):
+    ``probe`` is the un-authenticated reachability hop, ``authenticate`` the
+    login handshake, ``get`` the authenticated read — doctor must exercise all
+    three, so a fake that only answered ``get`` would let an auth regression
+    through.
+    """
+
+    def __init__(self, target, *, endpoints=None, auth_error=None) -> None:
+        self.target = target
+        self.auth_strategy = auth.for_dialect(target.dialect_obj)
+        self._endpoints = [{"id": "e1"}] if endpoints is None else endpoints
+        self._auth_error = auth_error
+        self.authenticated = False
+
+    def probe(self, path):
         assert path == self.target.dialect_obj.version_path
         return {"version": "24.04.1"}
+
+    def authenticate(self):
+        if self._auth_error is not None:
+            raise self._auth_error
+        self.authenticated = True
+
+    def get(self, path):
+        assert path == self.target.dialect_obj.endpoints_path
+        return self._endpoints
 
 
 class _HealthyManager:
@@ -117,8 +139,9 @@ def test_doctor_all_healthy_exit_zero(doctor_home, monkeypatch, capsys):
     assert "1 target(s) configured" in out
     assert "Encrypted secret store present" in out
     assert "API key present for 'fleet1'" in out
-    assert "Connected to 'fleet1' (mgmt.example.com)" in out
+    assert "Reached 'fleet1' (mgmt.example.com)" in out
     assert "management server 24.04.1" in out
+    assert "Authenticated to 'fleet1'" in out
 
 
 @pytest.mark.unit
@@ -133,7 +156,8 @@ def test_doctor_skip_auth_skips_connectivity(doctor_home, monkeypatch, capsys):
     assert run_doctor(skip_auth=True) == 0
     out = capsys.readouterr().out
     assert "Skipping connectivity check" in out
-    assert "Connected" not in out
+    assert "Reached" not in out
+    assert "Authenticated" not in out
 
 
 @pytest.mark.unit
@@ -143,7 +167,7 @@ def test_doctor_unreachable_target_exit_one(doctor_home, monkeypatch, capsys):
     monkeypatch.setattr(connection_mod, "ConnectionManager", _UnreachableManager)
     assert run_doctor() == 1
     out = capsys.readouterr().out
-    assert "Connect to 'fleet1' failed" in out
+    assert "could not build a connection" in out
     assert "refused" in out
 
 
@@ -187,3 +211,96 @@ def test_cli_doctor_command_exits_with_doctor_code(doctor_home, monkeypatch):
     result = CliRunner().invoke(app, ["doctor", "--skip-auth"])
     assert result.exit_code == 0
     assert "Skipping connectivity check" in result.output
+
+
+# ── auth is checked separately from reachability, and named precisely ───────
+
+
+class _ManagerOf:
+    """Stands in for ConnectionManager, yielding one prepared _FakeConn."""
+
+    def __init__(self, conn_factory):
+        self._factory = conn_factory
+
+    def __call__(self, config):
+        self._config = config
+        return self
+
+    def connect(self, name):
+        return self._factory(self._config.get_target(name))
+
+
+@pytest.mark.unit
+def test_doctor_names_the_scheme_it_is_authenticating_with(doctor_home, monkeypatch, capsys):
+    _write_config(doctor_home, [_TARGET])
+    _seed_secret(monkeypatch)
+    monkeypatch.setattr(connection_mod, "ConnectionManager", _HealthyManager)
+    assert run_doctor() == 0
+    out = capsys.readouterr().out
+    assert "dialect 'generic'" in out
+    assert "Bearer token" in out
+
+
+@pytest.mark.unit
+def test_doctor_reports_a_rejected_scheme_as_a_dialect_problem(doctor_home, monkeypatch, capsys):
+    """A 401 naming a different scheme must not read as 'bad credentials'."""
+    rejected = connection_mod.EndpointApiError(
+        "nope", status_code=401, path="/endpoints",
+        challenge='Basic realm="UMS"', auth_scheme="bearer",
+    )
+    _write_config(doctor_home, [_TARGET])
+    _seed_secret(monkeypatch)
+    monkeypatch.setattr(
+        connection_mod, "ConnectionManager",
+        _ManagerOf(lambda t: _FakeConn(t, auth_error=rejected)),
+    )
+    assert run_doctor() == 1
+    out = capsys.readouterr().out
+    assert "authentication rejected (401)" in out
+    assert "Basic" in out                      # what the server wants
+    assert "dialect is" in out and "rotating keys" in out
+
+
+@pytest.mark.unit
+def test_doctor_reports_an_unusable_scheme_config(doctor_home, monkeypatch, capsys):
+    from endpoint_aiops.auth import AuthSchemeError
+
+    _write_config(doctor_home, [_TARGET])
+    _seed_secret(monkeypatch)
+    monkeypatch.setattr(
+        connection_mod, "ConnectionManager",
+        _ManagerOf(lambda t: _FakeConn(t, auth_error=AuthSchemeError("needs a username"))),
+    )
+    assert run_doctor() == 1
+    out = capsys.readouterr().out
+    assert "auth scheme not usable as configured" in out
+    assert "needs a username" in out
+
+
+@pytest.mark.unit
+def test_doctor_warns_that_an_empty_fleet_may_be_a_permissions_problem(
+    doctor_home, monkeypatch, capsys
+):
+    """IMI returns [] rather than 403 for an under-privileged account.
+
+    An empty list that means 'you cannot see these' must not be reported as a
+    clean, empty fleet — that is the line's bug class 3 arriving from upstream.
+    """
+    _write_config(doctor_home, [_TARGET])
+    _seed_secret(monkeypatch)
+    monkeypatch.setattr(
+        connection_mod, "ConnectionManager", _ManagerOf(lambda t: _FakeConn(t, endpoints=[])),
+    )
+    assert run_doctor() == 0  # authenticated fine; this is a warning, not a failure
+    out = capsys.readouterr().out
+    assert "returned no endpoints" in out
+    assert "Read/Browse at the Devices level" in out
+
+
+@pytest.mark.unit
+def test_doctor_does_not_warn_when_endpoints_come_back(doctor_home, monkeypatch, capsys):
+    _write_config(doctor_home, [_TARGET])
+    _seed_secret(monkeypatch)
+    monkeypatch.setattr(connection_mod, "ConnectionManager", _HealthyManager)
+    assert run_doctor() == 0
+    assert "returned no endpoints" not in capsys.readouterr().out

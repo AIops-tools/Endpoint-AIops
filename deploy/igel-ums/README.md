@@ -51,10 +51,16 @@ into the normalised model — no code change.
 - **Paths / field names** vary by UMS + IMI version — confirm each against the IMI
   API docs for your UMS. The values in `dialect.yaml` are a starting map, not verified
   against a live UMS.
-- **Auth**: IMI uses HTTP Basic / a message-auth handshake, **not** a static Bearer
-  token. The dialect maps only paths + fields; a live integration also needs an auth
-  adapter (future) or a gateway that presents Bearer to endpoint-aiops. This is why
-  the mapping ships as an overlay, not as a built-in dialect.
+- **Auth**: IMI does **not** accept a static Bearer token — it logs in with HTTP
+  Basic at `POST /umsapi/v3/login` and then carries a `JSESSIONID` cookie. That is
+  now implemented as the `imi-session` auth strategy, selected by `auth:` in the
+  dialect, so **no gateway or auth adapter is needed** any more. Set `username:` on
+  the target and put the UMS account's password in the encrypted store. The scheme
+  is documented in IGEL's IMI manual and matches what real IMI clients do, but like
+  everything else here it has not been run against a live UMS.
+- **Permissions**: an account below Read/Browse at the Devices level gets **empty
+  lists, not a 403** — verify the device count against the UMS console before
+  believing an empty result.
 - Everything here is **read-first**; the two write tools (assign-profile, reboot) map
   to IMI command endpoints (`待核实`) and stay governed (dry-run + double-confirm).
 

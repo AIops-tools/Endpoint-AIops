@@ -21,8 +21,8 @@ metadata: {"openclaw":{"requires":{"env":["ENDPOINT_AIOPS_CONFIG"],"bins":["endp
 compatibility: >
   Standalone, self-governed managed-endpoint operations. The governance harness (audit, policy, token/runaway budget, undo, risk-tiers) is bundled in the package — no external skill-family dependency.
   All write operations are audited to a local SQLite DB under ~/.endpoint-aiops/ (relocatable via ENDPOINT_AIOPS_HOME).
-  Credentials: the endpoint-management server's API key is stored ENCRYPTED in ~/.endpoint-aiops/secrets.enc (Fernet/AES-128 + scrypt-derived key) — never plaintext on disk. Run 'endpoint-aiops init' to onboard, or 'endpoint-aiops secret set <target>' to add one. The store is unlocked by a master password from ENDPOINT_AIOPS_MASTER_PASSWORD (non-interactive/MCP/CI) or an interactive prompt (CLI on a TTY). A legacy plaintext env var ENDPOINT_<TARGET_NAME_UPPER>_APIKEY is still honoured as a fallback with a deprecation warning (migrate with 'endpoint-aiops secret migrate'). The API key is sent as an Authorization: Bearer header at request time and held only in memory; keys are never logged or echoed.
-  State-changing operations (assign-profile, reboot) require double confirmation at the CLI layer and support --dry-run. All write tools pass through the @governed_tool decorator (pre-check + budget guard + audit + risk-tier gate). endpoint_assign_profile is high-risk and reversible (captures the prior profile, records an inverse reassign undo descriptor); endpoint_reboot is medium-risk with no undo (a reboot has no safe inverse).
+  Credentials: the endpoint-management server's API key is stored ENCRYPTED in ~/.endpoint-aiops/secrets.enc (Fernet/AES-128 + scrypt-derived key) — never plaintext on disk. Run 'endpoint-aiops init' to onboard, or 'endpoint-aiops secret set <target>' to add one. The store is unlocked by a master password from ENDPOINT_AIOPS_MASTER_PASSWORD (non-interactive/MCP/CI) or an interactive prompt (CLI on a TTY). A legacy plaintext env var ENDPOINT_<TARGET_NAME_UPPER>_APIKEY is still honoured as a fallback with a deprecation warning (migrate with 'endpoint-aiops secret migrate'). The credential is presented using the scheme the target's dialect declares — a static Authorization: Bearer header for the generic dialect, or an HTTP Basic login yielding a session cookie for igel-ums (which also needs a 'username' on the target). It is held only in memory; credentials are never logged or echoed.
+  State-changing operations (assign-profile, reboot) require double confirmation at the CLI layer and support --dry-run. All write tools pass through the @governed_tool decorator (pre-check + budget guard + audit + risk-tier label). endpoint_assign_profile is high-risk and reversible (captures the prior profile, records an inverse reassign undo descriptor); endpoint_reboot is medium-risk with no undo (a reboot has no safe inverse).
   Webhooks: none — no outbound network calls beyond the configured endpoint-management REST API.
   SSL: verify_ssl defaults to true; disable only for self-signed lab certificates.
   Transitive dependencies: httpx (HTTP client) and the MCP SDK. No post-install scripts or background services.
@@ -33,7 +33,7 @@ compatibility: >
 
 > **Disclaimer**: Community-maintained open-source project, **not affiliated with, endorsed by, or sponsored by any endpoint-management vendor.** Product and trademark names belong to their owners. Source at [github.com/AIops-tools/Endpoint-AIops](https://github.com/AIops-tools/Endpoint-AIops) under the MIT license.
 
-Governed managed-endpoint operations — **13 MCP tools**, every one wrapped with the bundled `@governed_tool` harness: a local unified audit log under `~/.endpoint-aiops/`, policy engine, token/runaway budget guard, undo-token recording, and graduated-autonomy risk tiers. The management-server API key is stored **encrypted** (`~/.endpoint-aiops/secrets.enc`, Fernet + scrypt) — never plaintext on disk.
+Governed managed-endpoint operations — **13 MCP tools**, every one wrapped with the bundled `@governed_tool` harness: a local unified audit log under `~/.endpoint-aiops/`, token/runaway budget guard, undo-token recording, and descriptive risk tiers. The management-server API key is stored **encrypted** (`~/.endpoint-aiops/secrets.enc`, Fernet + scrypt) — never plaintext on disk.
 
 > **Standalone**: the governance harness is bundled in the package (`endpoint_aiops.governance`) — endpoint-aiops has no external skill-family dependency. The test suite is mock-based; a live management server has not yet been exercised (see `docs/VERIFICATION.md`).
 
@@ -92,7 +92,7 @@ endpoint-aiops doctor
 1. `endpoint-aiops drift report` → the drifted endpoints and exactly which fields deviate from the fleet-majority baseline
 2. `endpoint-aiops endpoint get <id>` → confirm you are about to change the right device and note its current profile
 3. `endpoint-aiops endpoint assign-profile <id> <profile-id> --dry-run` → preview the exact `POST /endpoints/<id>/profile` call, changes nothing
-4. `endpoint-aiops endpoint assign-profile <id> <profile-id>` → double confirmation; `high` risk, so with no `rules.yaml` it requires `ENDPOINT_AUDIT_APPROVED_BY`. The prior profile is captured and an inverse reassign undo descriptor is recorded
+4. `endpoint-aiops endpoint assign-profile <id> <profile-id>` → double confirmation; `high` risk. The prior profile is captured and an inverse reassign undo descriptor is recorded
 5. **Failure branch**: if the endpoint misbehaves on the new profile, `endpoint-aiops undo list` then `endpoint-aiops undo apply <id>` restores the *captured* prior profile (not a guess); re-run `drift report` to confirm the fleet picture.
 
 ### Patch-compliance sweep before a maintenance window
@@ -112,11 +112,17 @@ endpoint-aiops doctor
 
 ## Governance & Safety
 
-- Every tool is audited to `~/.endpoint-aiops/audit.db` (relocatable via `ENDPOINT_AIOPS_HOME`).
-- High-risk ops can require a named approver: set `ENDPOINT_AUDIT_APPROVED_BY` and `ENDPOINT_AUDIT_RATIONALE`.
-- **Secure by default (v0.2.0+)**: with no `~/.endpoint-aiops/rules.yaml`, high/critical operations are denied unless `ENDPOINT_AUDIT_APPROVED_BY` names an approver (set `ENDPOINT_AUDIT_RATIONALE` too). `endpoint-aiops init` seeds a starter rules.yaml; an operator-authored rules file is honoured as-is.
-- Writes support `--dry-run` and double confirmation at the CLI.
-- Reversible writes record an inverse descriptor; the reboot (no safe inverse) records only the before-state.
+The skill delivers reads and writes and records them; it does **not** decide
+whether a write is permitted. That is your agent's judgement, or the permission
+of the account you connect it with (a management-console account or API token
+scoped to a read-only role — writes then fail at the server). There is no
+read-only switch, policy file, or approval gate.
+
+- **Audit is the guarantee, and it is not bypassable.** Every operation — MCP and CLI alike — is logged to `~/.endpoint-aiops/audit.db` (relocatable via `ENDPOINT_AIOPS_HOME`): params, result, status, duration, and the risk tier. The CLI writes the same row the MCP path does.
+- `ENDPOINT_AUDIT_APPROVED_BY` / `ENDPOINT_AUDIT_RATIONALE` are optional annotations recorded on the audit row (who/why); they are never required and never block.
+- **Runaway guard** — a safety backstop, not authorization: the same call looped in a tight window trips a circuit breaker. Disable with `ENDPOINT_RUNAWAY_MAX=0`.
+- Writes support `--dry-run` / `dry_run=True` and double confirmation at the CLI.
+- Reversible writes fetch the real before-state and record an inverse descriptor (`endpoint_assign_profile`→restore prior profile); the reboot (no safe inverse) records only the before-state.
 
 ## References
 

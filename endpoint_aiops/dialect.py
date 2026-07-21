@@ -1,9 +1,15 @@
 """Management-server dialects — adapt to a differently-shaped endpoint API.
 
 endpoint-aiops normalises whatever a management server returns into one stable
-shape. Different servers expose different **resource paths** and **field names**;
-a ``Dialect`` captures both so the same tools work against any of them without
-touching code — you describe the server's API in config, not in Python.
+shape. Different servers expose different **resource paths**, **field names**
+and **authentication schemes**; a ``Dialect`` captures all three so the same
+tools work against any of them without touching code — you describe the
+server's API in config, not in Python.
+
+``auth`` names a strategy in :mod:`endpoint_aiops.auth`. Keeping it here rather
+than branching in the connection layer is the point: a dialect that fixed only
+paths and ports still could not log in, which made "we added a preset" read as
+"this server is supported" when the very first request was still rejected.
 
 The built-in :data:`DEFAULT_DIALECT` ("generic") is a **neutral placeholder**, not
 a real vendor's API: ``/endpoints`` on port 443 under ``/api/v2.0`` is a shape no
@@ -76,6 +82,12 @@ class Dialect:
     # Transport defaults a target inherits when it does not state its own.
     default_port: int = 443
     default_api_path: str = "/api/v2.0"
+    # Authentication scheme, resolved through endpoint_aiops.auth.STRATEGIES.
+    # A server's auth scheme is part of its API shape exactly as its paths are,
+    # so it belongs in the registry rather than as a branch in the connection
+    # layer. Correcting IGEL's paths while still sending it a Bearer token left
+    # the real blocker in place: the paths were right and the login was wrong.
+    auth: str = "bearer"
     endpoints_path: str | None = "/endpoints"
     endpoint_path: str | None = "/endpoints/{id}"
     sessions_path: str | None = "/sessions"
@@ -123,13 +135,17 @@ DEFAULT_DIALECT = Dialect()
 # server. Paths marked below are the least certain. See docs/VERIFICATION.md,
 # where this is recorded as UNKNOWN-pending-live rather than as known-good.
 #
-# ⚠️ AUTH: IMI uses HTTP Basic / a message-auth handshake, NOT the static Bearer
-# token this tool sends. A live integration needs an auth adapter or a gateway
-# that presents Bearer. The dialect maps paths and fields only.
+# ⚠️ AUTH: IMI does NOT accept the static Bearer token the generic dialect
+# sends. It logs in with HTTP Basic and then carries a session — implemented as
+# the "imi-session" strategy in endpoint_aiops.auth. That strategy is modelled
+# from the same documentation as the paths below and carries the same UNKNOWN
+# status: it replaces a known-wrong scheme with a documented-but-unconfirmed
+# one, which is closer but still not verified.
 IGEL_UMS_DIALECT = Dialect(
     name="igel-ums",
     default_port=8443,
     default_api_path="/umsapi/v3",
+    auth="imi-session",
     endpoints_path="/thinclients",
     endpoint_path="/thinclients/{id}",
     # IMI exposes no login/boot session resource. None (not a guessed path) so
@@ -159,7 +175,7 @@ PRESETS: dict[str, Dialect] = {
 
 # Only path/scalar overrides are applied wholesale; ``fields`` is merged per-field
 # so an override can add aliases without dropping the defaults.
-_PATH_KEYS = ("name", "default_port", "default_api_path", "endpoints_path",
+_PATH_KEYS = ("name", "default_port", "default_api_path", "auth", "endpoints_path",
               "endpoint_path", "sessions_path", "version_path", "profile_path",
               "reboot_path", "list_key")
 

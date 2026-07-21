@@ -1,7 +1,7 @@
 """Tests for the ``endpoint-aiops init`` onboarding wizard.
 
 The wizard is driven end-to-end through Typer's CliRunner with every path
-(config.yaml, secrets.enc, rules.yaml) isolated under tmp_path. The master
+(config.yaml, secrets.enc) isolated under tmp_path. The master
 password comes from ENDPOINT_AIOPS_MASTER_PASSWORD (the non-interactive path)
 and the hidden API-key prompt is patched at the getpass boundary.
 """
@@ -26,6 +26,11 @@ API_KEY = "endpoint-api-key-0123"
 # scheme (https), accept default port, accept TLS-verify default (True), no
 # second target, decline the trailing doctor run.
 WIZARD_INPUT = "fleet1\nmgmt.example.com\n\n\n\n\nn\nn\n"
+
+# Same, but choosing the igel-ums dialect — which authenticates with HTTP Basic
+# and therefore prompts for a UMS administrator username the generic path does
+# not ask for. The password arrives via the patched getpass.
+IGEL_INPUT = "fleet1\nums.example.com\nigel-ums\n\n\n\nums-admin\nn\nn\n"
 
 
 @pytest.fixture
@@ -92,23 +97,12 @@ def test_init_stores_secret_encrypted_not_in_config(init_home):
 
 
 @pytest.mark.unit
-def test_init_seeds_default_rules_with_dual_control_tier(init_home):
+def test_init_writes_no_policy_rules(init_home):
+    """The skill no longer authorizes, so init seeds no rules.yaml — a fresh
+    install delivers full functionality and leaves permission to the account."""
     result = _run_init()
     assert result.exit_code == 0, result.output
-    rules = yaml.safe_load((init_home / "rules.yaml").read_text("utf-8"))
-    tiers = {r["name"]: r for r in rules["risk_tiers"]}
-    assert "high-risk-requires-approver" in tiers
-    assert tiers["high-risk-requires-approver"]["tier"] == "dual"
-    assert tiers["high-risk-requires-approver"]["min_risk_level"] == "high"
-
-
-@pytest.mark.unit
-def test_init_rerun_does_not_clobber_existing_rules(init_home):
-    sentinel = "# operator-authored rules — must survive re-init\nrisk_tiers: []\n"
-    (init_home / "rules.yaml").write_text(sentinel, "utf-8")
-    result = _run_init()
-    assert result.exit_code == 0, result.output
-    assert (init_home / "rules.yaml").read_text("utf-8") == sentinel
+    assert not (init_home / "rules.yaml").exists()
 
 
 @pytest.mark.unit
@@ -135,7 +129,7 @@ def test_init_overwrite_existing_target(init_home):
 @pytest.mark.unit
 def test_init_igel_preset_writes_igel_port_and_api_path(init_home):
     """Choosing igel-ums must configure IMI's real transport, not the placeholder."""
-    result = _run_init("fleet1\nums.example.com\nigel-ums\n\n\n\nn\nn\n")
+    result = _run_init(IGEL_INPUT)
     assert result.exit_code == 0, result.output
     target = yaml.safe_load((init_home / "config.yaml").read_text("utf-8"))["targets"][0]
     assert target["dialect"] == "igel-ums"
@@ -146,7 +140,7 @@ def test_init_igel_preset_writes_igel_port_and_api_path(init_home):
 @pytest.mark.unit
 def test_init_names_the_dialect_it_configured(init_home):
     """The wizard must say which dialect it set up, not leave it implicit."""
-    result = _run_init("fleet1\nums.example.com\nigel-ums\n\n\n\nn\nn\n")
+    result = _run_init(IGEL_INPUT)
     assert "igel-ums" in result.output
 
 
@@ -172,3 +166,24 @@ def test_init_can_select_plain_http(init_home):
     assert result.exit_code == 0, result.output
     target = yaml.safe_load((init_home / "config.yaml").read_text("utf-8"))["targets"][0]
     assert target["scheme"] == "http"
+
+
+@pytest.mark.unit
+def test_init_asks_for_a_username_on_a_basic_auth_dialect(init_home):
+    """igel-ums logs in with a UMS account, so 'API key' is the wrong prompt."""
+    result = _run_init(IGEL_INPUT)
+    assert result.exit_code == 0, result.output
+    assert "UMS administrator username" in result.output
+    assert "Read/Browse permission at the Devices level" in result.output
+    target = yaml.safe_load((init_home / "config.yaml").read_text("utf-8"))["targets"][0]
+    assert target["username"] == "ums-admin"
+
+
+@pytest.mark.unit
+def test_init_omits_username_for_the_bearer_dialect(init_home):
+    """A static-token dialect has no username; the key is the whole credential."""
+    result = _run_init()
+    assert result.exit_code == 0, result.output
+    assert "UMS administrator username" not in result.output
+    target = yaml.safe_load((init_home / "config.yaml").read_text("utf-8"))["targets"][0]
+    assert "username" not in target

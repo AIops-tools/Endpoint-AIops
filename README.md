@@ -6,8 +6,8 @@
 
 Governed AI-ops for **managed-endpoint fleets** — thin clients, VDI endpoints,
 and other centrally-managed devices — with a **built-in governance harness**:
-unified audit log, policy engine, token/runaway budget guard, undo-token
-recording, and graduated-autonomy risk tiers. Vendor-neutral: it talks to an
+unified audit log, token/runaway budget guard, undo-token recording, and
+descriptive risk tiers. Vendor-neutral: it talks to an
 endpoint-management server's REST API (Bearer auth) through a configurable
 **dialect** — see [Dialects](#dialects--which-server-are-you-actually-pointing-at). Self-contained: no
 dependencies beyond `httpx` and the MCP SDK. The test suite is mock-based; the
@@ -53,40 +53,25 @@ The analysis tools (`login_storm_analysis`, `drift_report`, `patch_status`,
 pure/offline analysis; `endpoint_health_score` and `patch_compliance` are
 injected-only, the others also pull live from a configured target.
 
-## Security: read-only mode
+## What this tool does, and does not, decide
 
-This tool is meant to be handed to an AI agent, so its safety story is enforced
-by the server rather than requested in a prompt:
+It delivers managed-endpoint operations — reads and writes — accurately and
+efficiently, and records every one of them. It does **not** decide whether a
+write is allowed to happen. That is the agent's judgement, or the permission of
+the account you connect it with: give it a management-console account or API
+token scoped to a read-only role and the writes fail at the server — the place
+that actually owns the permission.
 
-```bash
-export ENDPOINT_READ_ONLY=1
-```
+So there is no read-only switch, no policy file, no approval gate to configure.
+The one thing the tool guarantees is that nothing is silent: **every call, over
+MCP and over the CLI alike, lands an audit row** in `~/.endpoint-aiops/audit.db`,
+and reversible writes still capture their before-state and record an inverse
+where one exists.
 
-With that set, the **3 write tools are never registered**. An MCP client
-lists **10 tools instead of 13** — the writes are not hidden, not
-gated behind a flag, and not merely refused when called. They are absent from
-the session. A model cannot invoke a tool it was never offered, and cannot be
-argued into one.
-
-That distinction is the whole point. A tool that exists but refuses still invites
-retry loops and "I'll describe the call instead" behaviour from smaller models,
-and it leaves a reviewer trusting a promise. An absent tool is a fact you can
-check: connect, list the tools, and see that the writes are not there.
-
-Enforcement is two layers deep, so the switch cannot be sidestepped by changing
-entry point:
-
-| Layer | What it does | Covers |
-|---|---|---|
-| `@governed_tool` harness | refuses every non-read operation outright | MCP, CLI, and in-process callers |
-| MCP registration | write tools are removed from `list_tools()` | anything speaking MCP |
-
-Read operations are unaffected, and every call is still audited to
-`~/.endpoint-aiops/audit.db`.
-
-> The read/write split is derived from each tool's declared `risk_level`, and a
-> test asserts that this never disagrees with the `[READ]`/`[WRITE]` tag in the
-> tool's own documentation — so a write can't quietly present itself as a read.
+> Each tool declares a `risk_level`, kept in agreement with its `[READ]`/`[WRITE]`
+> documentation tag by a test, and carried into the audit row as a descriptive
+> tier — so a reviewer can see at a glance that a row was a high-risk write. It
+> is a label, not a gate.
 
 Running a smaller / local model? See
 [agent-guardrails.md](skills/endpoint-aiops/references/agent-guardrails.md) — it lists
@@ -124,15 +109,21 @@ endpoint-aiops-mcp
 
 ## Governance
 
-Every MCP tool passes through the bundled `@governed_tool` harness:
+Every operation — MCP **and** CLI — passes through the bundled `@governed_tool`
+harness. It records; it does not authorize (see above).
 
-- **Audit** — every call (params, result, status, duration, risk tier,
-  approver, rationale) is logged to `~/.endpoint-aiops/audit.db` (relocatable
-  via `ENDPOINT_AIOPS_HOME`).
-- **Budget / runaway guard** — token and call budgets trip a circuit breaker.
-- **Risk tiers** — graduated autonomy; high-risk ops can require a named
-  approver (`ENDPOINT_AUDIT_APPROVED_BY` / `ENDPOINT_AUDIT_RATIONALE`).
-- **Undo recording** — reversible writes record an inverse descriptor.
+- **Audit** — every call (params, result, status, duration, risk tier, and any
+  operator-supplied approver/rationale) is logged to `~/.endpoint-aiops/audit.db`
+  (relocatable via `ENDPOINT_AIOPS_HOME`). The CLI writes the same row the MCP
+  path does — there is no unaudited entry point.
+- **Runaway guard** — a safety backstop, not an authorization gate: the same
+  call hammered in a tight loop trips a circuit breaker so a stuck agent can't
+  burn unbounded calls/time. Disable with `ENDPOINT_RUNAWAY_MAX=0`; optional hard
+  ceilings via `ENDPOINT_MAX_TOOL_CALLS` / `ENDPOINT_MAX_TOOL_SECONDS`.
+- **Undo recording** — reversible writes record an inverse descriptor built from
+  the fetched before-state.
+- **Risk tier** — a descriptive label on the audit row derived from
+  `risk_level`; it gates nothing.
 
 ## Scope
 
@@ -143,20 +134,21 @@ with audit + budget + undo + risk tiers). For **OT / industrial edge**
 ## Dialects — which server are you actually pointing at?
 
 A **dialect** is the management server's API shape: resource paths, response
-field names, and the transport defaults (port + API base path). Set it per
-target in `config.yaml`; `endpoint-aiops init` now asks for it and prints which
-one it configured.
+field names, the transport defaults (port + API base path), **and how to
+authenticate**. Set it per target in `config.yaml`; `endpoint-aiops init` asks
+for it and prints which one it configured.
 
-| Dialect | Transport | Status |
-|---------|-----------|--------|
-| `generic` (default) | `/api/v2.0` on 443 | **Neutral placeholder — not a real vendor API.** Useful only once you describe your server's paths in a `dialect:` block. |
-| `igel-ums` | `/umsapi/v3` on **8443** | IGEL UMS via the IGEL Management Interface (IMI). **Modelled from IGEL's published IMI documentation — NOT live-verified.** |
+| Dialect | Transport | Auth | Status |
+|---------|-----------|------|--------|
+| `generic` (default) | `/api/v2.0` on 443 | static Bearer API key | **Neutral placeholder — not a real vendor API.** Useful only once you describe your server's paths in a `dialect:` block. |
+| `igel-ums` | `/umsapi/v3` on **8443** | HTTP Basic login → `JSESSIONID` cookie | **Documented-but-unverified dialect for IGEL UMS (IMI). This is not a claim that IGEL is supported** — see [Status](#status). |
 
 ```yaml
 targets:
   - name: ums1
     host: ums.example.local
-    dialect: igel-ums        # sets IMI paths, port 8443, base path /umsapi/v3
+    dialect: igel-ums        # IMI paths, port 8443, /umsapi/v3, Basic-login auth
+    username: ums-admin      # UMS account; the password lives in secrets.enc
     scheme: https            # or 'http' for a reverse-proxied server
     verify_ssl: false        # self-signed lab UMS only
 ```
@@ -170,17 +162,37 @@ guessing a URL — IMI exposes no login/boot session resource, so `session_list`
 and `login_storm_analysis` on an `igel-ums` target return a teaching error
 naming the absent resource instead of calling an invented path.
 
-⚠️ **IMI auth**: IGEL's IMI uses HTTP Basic / a message-auth handshake, not the
-static Bearer token this tool sends. A live IGEL integration also needs an auth
-adapter or a gateway that presents Bearer. The dialect maps paths and fields
-only.
+A dialect selects the **auth scheme** too, not just paths — IMI rejects the
+static Bearer token the generic dialect sends, so it logs in with HTTP Basic at
+`POST /umsapi/v3/login` and carries the returned `JSESSIONID` cookie (once per
+connection, then cached). Because the scheme comes from the dialect, a
+credentials failure and a *wrong-dialect* failure are reported differently: a
+401 names the scheme presented and, when the server sends a `WWW-Authenticate`
+challenge, the scheme it actually wants — so a dialect mismatch does not send
+you off rotating a perfectly good key.
+
+⚠️ Note for IGEL specifically: a UMS account with too few permissions receives
+**empty lists rather than a 403**. `endpoint-aiops doctor` authenticates as a
+step separate from its reachability probe and warns when a successful login
+returns no endpoints, because "no devices" and "not allowed to see the devices"
+are otherwise indistinguishable.
 
 ## Status
 
 The test suite is mock-based. **No dialect in this package has been exercised
-against a real management server.** The `generic` shape is a placeholder, and
-the `igel-ums` preset is modelled from vendor documentation — recorded as
-UNKNOWN-pending-live in [`docs/VERIFICATION.md`](docs/VERIFICATION.md), which
-defines the checklist a live run must cover. IGEL UMS has no free edition, so it
-cannot be verified on the maintainer's hardware. Missing a capability or a server
-dialect? Open an issue or PR — contributions welcome.
+against a real management server**, so this package does not claim support for
+any specific product — including IGEL.
+
+- `generic` is a **placeholder shape**, not a vendor API.
+- `igel-ums` is a **documented-but-unverified dialect**. Its paths and field
+  aliases are modelled from IGEL's published IMI documentation; its auth scheme
+  is documented in the IMI manual and matches what three independent real-world
+  IMI clients do. Neither has been run against an appliance by this project —
+  IGEL UMS has no free edition, so it cannot be verified on the maintainer's
+  hardware.
+
+Both are recorded as UNKNOWN-pending-live in
+[`docs/VERIFICATION.md`](docs/VERIFICATION.md), which ranks what a live run is
+most likely to find wrong and defines the checklist it must cover. If you have a
+UMS and run that checklist, the results are very welcome as an issue. Missing a
+capability or a server dialect? Open an issue or PR — contributions welcome.

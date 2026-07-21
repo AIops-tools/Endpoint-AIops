@@ -5,9 +5,14 @@
 #
 # 待核实 — the exact IMI resource paths and field names vary by UMS/IMI version;
 # confirm each against the IMI API documentation for your UMS before relying on it.
-# Auth: IMI uses HTTP Basic / a message-auth handshake, NOT a static Bearer token,
-# so a live integration also needs an auth adapter or a gateway that presents
-# Bearer — the dialect below only maps paths + response fields (see README.md).
+#
+# Auth: IMI does NOT accept a static Bearer token. It logs in with HTTP Basic at
+# POST /umsapi/v3/login and then carries a JSESSIONID cookie. That is implemented
+# as the `imi-session` auth strategy, selected by `auth:` below — a dialect that
+# only mapped paths would still be rejected on its very first call. The account
+# is a UMS administrator (set `username:` on the target; the password goes in the
+# encrypted store), and it needs at least Read/Browse at the Devices level:
+# with fewer permissions IMI returns EMPTY LISTS rather than an error.
 
 targets:
   - name: ums1
@@ -15,11 +20,16 @@ targets:
     port: 8443
     api_path: /umsapi/v3
     verify_ssl: false              # self-signed lab UMS only
+    username: ums-admin            # UMS account; password lives in secrets.enc
     dialect:
       name: igel-ums
+      auth: imi-session            # HTTP Basic login -> JSESSIONID cookie
       endpoints_path: /thinclients
       endpoint_path: /thinclients/{id}
-      sessions_path: /thinclients/sessions          # 待核实
+      # IMI exposes no login/boot session resource. Null (not a guessed path) so
+      # the session tools name the absent resource instead of 404ing against an
+      # invented URL — matching the shipped `igel-ums` preset.
+      sessions_path: null
       version_path: /serverstatus
       profile_path: /thinclients/{id}/profile        # 待核实
       reboot_path: /thinclients/{id}/commands/reboot  # 待核实

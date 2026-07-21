@@ -36,8 +36,10 @@ Every MCP tool runs through the bundled `@governed_tool` harness
   `ENDPOINT_MAX_TOOL_SECONDS`) plus an on-by-default guard that trips a tight
   poll/retry loop, preventing unbounded API consumption (e.g. polling a slow
   session).
-- **Graduated risk tiers** — `~/.endpoint-aiops/rules.yaml` `risk_tiers` gate
-  writes by environment/tag; the highest tiers require a recorded approver.
+- **Risk-tier labelling** — each tool's declared `risk_level` is carried into
+  the audit row as a descriptive tier. It labels the row; it does not gate the
+  call. Whether a write is permitted is the agent's or the account's decision,
+  not the skill's.
 - **Undo-token recording** — `endpoint_assign_profile` captures the prior
   profile and records an inverse "reassign the prior profile" descriptor so the
   change can be rolled back.

@@ -8,17 +8,29 @@
 uv tool install endpoint-aiops
 ```
 
-## 2. Create a management-server API key
+## 2. Create credentials — the shape depends on the dialect
 
-In your endpoint-management server's web UI, create an API key (usually under a
-Credentials / API Keys section). Copy the key. endpoint-aiops sends it as
-`Authorization: Bearer <key>` against the REST API base
-`<scheme>://<host>:<port><api_path>` — where the port and API base path come
-from the target's **dialect** unless you state them yourself.
+The target's **dialect** decides the port, the API base path *and* how to
+authenticate, so create the credential the dialect expects:
 
-⚠️ IGEL's IMI does **not** accept a static Bearer token (it uses HTTP Basic / a
-message-auth handshake), so an `igel-ums` target also needs an auth adapter or a
-gateway that presents Bearer.
+**`generic` (default) — a static API key.** In your endpoint-management
+server's web UI, create an API key (usually under a Credentials / API Keys
+section). It is sent as `Authorization: Bearer <key>` against the REST API base
+`<scheme>://<host>:<port><api_path>`.
+
+**`igel-ums` — a UMS administrator account.** IMI does not accept a static
+Bearer token; it logs in with HTTP Basic at `POST /umsapi/v3/login` and then
+carries the returned `JSESSIONID` cookie. So an `igel-ums` target needs a
+`username:` in `config.yaml` plus that account's **password** in the encrypted
+store — not an API key. No gateway or auth adapter is needed.
+
+⚠️ Give that account at least **Read/Browse permission at the Devices level**.
+With fewer permissions IMI returns **empty lists rather than an error**, so an
+under-privileged account looks exactly like an empty fleet. `endpoint-aiops
+doctor` warns when a successful login returns no endpoints — do not dismiss it.
+
+⚠️ The `igel-ums` dialect is **documented but not live-verified** (IGEL UMS has
+no free edition). See `docs/VERIFICATION.md` in the repository.
 
 ## 3. Onboard
 
@@ -71,12 +83,23 @@ export ENDPOINT_AIOPS_MASTER_PASSWORD='your-master-password'
   exception text and tracebacks are scrubbed of secret-shaped strings before
   being written to the audit log.
 
+## Audit-annotation env vars (optional)
+
+The skill does not decide whether a write is permitted — that is the agent's
+judgement or the connecting account's role. If you want the audit trail to
+record *who* ran a destructive op and *why*, set these; they are recorded on the
+row, never required, and gate nothing:
+
+```bash
+export ENDPOINT_AUDIT_APPROVED_BY='you@example.com'
+export ENDPOINT_AUDIT_RATIONALE='why this destructive op is justified'
+```
+
 ## Governance harness state
 
 State lives under `~/.endpoint-aiops/` (relocate with `ENDPOINT_AIOPS_HOME`):
 
-- `audit.db` — every tool call (SQLite), with risk tier, approver, rationale
-- `rules.yaml` — policy: deny rules, maintenance windows, approval tiers
+- `audit.db` — every tool call (SQLite), with risk tier and any approver/rationale
 - `undo.db` — inverse descriptors for reversible writes (e.g. `endpoint_assign_profile`)
 - budget / runaway guard — caps cumulative tool calls and wall-time; trips on
   tight poll/retry loops

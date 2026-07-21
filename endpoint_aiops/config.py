@@ -20,7 +20,12 @@ from typing import TYPE_CHECKING
 import yaml
 
 from endpoint_aiops.governance.paths import ops_home
-from endpoint_aiops.secretstore import SecretStoreError, get_secret, has_store
+from endpoint_aiops.secretstore import (
+    MasterPasswordError,
+    SecretStoreError,
+    get_secret,
+    has_store,
+)
 
 if TYPE_CHECKING:
     from endpoint_aiops.dialect import Dialect
@@ -53,8 +58,15 @@ def _resolve_secret(name: str) -> str:
     if has_store():
         try:
             return get_secret(name)
+        except MasterPasswordError:
+            # A wrong or missing master password is NOT "this target has no
+            # secret". Falling through resurfaced it as "No API key for target
+            # X", sending the operator to add a credential that is already
+            # there. MasterPasswordError subclasses SecretStoreError, so the
+            # broad catch below would swallow it — re-raise first.
+            raise
         except SecretStoreError:
-            pass  # fall through to legacy env var
+            pass  # no secret stored for this target — try the legacy env var
     legacy = os.environ.get(_secret_env_key(name))
     if legacy:
         _log.warning(
@@ -95,6 +107,15 @@ class TargetConfig:
     reverse proxy, and the URL was previously hardcoded to ``https://`` with no
     way to override it — which made such an instance simply unreachable, with a
     TLS record-layer error as the only clue.
+    """
+
+    username: str = ""
+    """Account name for dialects that log in with HTTP Basic (e.g. ``igel-ums``).
+
+    Not a secret and therefore in the config file, with the password in the
+    encrypted store — the same split Proxy-AIops uses for the HAProxy Data
+    Plane API. Unused by the ``bearer`` scheme, where the API key alone is the
+    whole credential.
     """
 
     # Per-target management-server dialect: a preset name (``"igel-ums"``) or a
@@ -173,6 +194,7 @@ def load_config(config_path: Path | None = None) -> AppConfig:
             verify_ssl=t.get("verify_ssl", True),
             api_path=t.get("api_path", ""),
             scheme=t.get("scheme", "https"),
+            username=t.get("username", ""),
             dialect=t.get("dialect"),
         )
         for t in raw.get("targets", [])
