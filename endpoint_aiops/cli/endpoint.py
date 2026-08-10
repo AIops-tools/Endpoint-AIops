@@ -10,6 +10,7 @@ import typer
 from endpoint_aiops.cli._common import (
     DryRunOption,
     TargetOption,
+    checked,
     cli_errors,
     console,
     double_confirm,
@@ -75,9 +76,9 @@ def endpoint_assign_profile(
     double_confirm(f"assign profile '{profile_id}' to", endpoint_id)
     console.print_json(
         json.dumps(
-            gov.endpoint_assign_profile(
+            checked(gov.endpoint_assign_profile(
                 endpoint_id=endpoint_id, profile_id=profile_id, target=target
-            )
+            ))
         )
     )
 
@@ -106,4 +107,6 @@ def endpoint_reboot(
         )
         return
     double_confirm("reboot", endpoint_id)
-    console.print_json(json.dumps(gov.endpoint_reboot(endpoint_id=endpoint_id, target=target)))
+    console.print_json(
+        json.dumps(checked(gov.endpoint_reboot(endpoint_id=endpoint_id, target=target)))
+    )
