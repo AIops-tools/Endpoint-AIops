@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "endpoint-aiops": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "--from",
+        "endpoint-aiops==0.9.0",
+        "endpoint-aiops-mcp"
+      ]
+    }
+  }
+}
