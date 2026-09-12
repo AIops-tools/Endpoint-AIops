@@ -1,0 +1,24 @@
+{
+  "id": "endpoint-aiops",
+  "name": "Endpoint AIops",
+  "description": "Governed managed-endpoint ops — login-storm & drift analysis, 13 MCP tools with audit/budget/undo.",
+  "skills": [
+    "./skills"
+  ],
+  "mcpServers": {
+    "endpoint-aiops": {
+      "transport": "stdio",
+      "command": "uvx",
+      "args": [
+        "--from",
+        "endpoint-aiops==0.10.0",
+        "endpoint-aiops-mcp"
+      ]
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}
