@@ -65,6 +65,8 @@ openclaw plugins install clawhub:@aiops-tools/endpoint-aiops
 openclaw skills info endpoint-aiops          # expect: Visible to model: yes
 ```
 
+Needs `uvx` on `PATH`: the MCP server is fetched with uv, pinned to this release.
+
 ## When to Use This Skill
 
 - Triage a fleet (`overview`): online/offline counts, stale endpoints, agent/patch spread
