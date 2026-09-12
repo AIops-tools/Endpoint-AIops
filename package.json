@@ -1,7 +1,7 @@
 {
   "name": "@aiops-tools/endpoint-aiops",
-  "version": "0.10.0",
-  "description": "Governed managed-endpoint ops — login-storm & drift analysis, 13 MCP tools with audit/budget/undo.",
+  "version": "0.10.2",
+  "description": "Governed managed-endpoint ops \u2014 login-storm & drift analysis, 13 MCP tools with audit/budget/undo.",
   "private": true,
   "license": "MIT",
   "homepage": "https://github.com/AIops-tools/Endpoint-AIops",
