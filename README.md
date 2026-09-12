@@ -110,7 +110,7 @@ The same bundle is published on [ClawHub](https://clawhub.ai/plugins), where one
 install delivers the skill and its MCP server together:
 
 ```bash
-openclaw plugins install clawhub:@aiops-tools/endpoint-aiops
+openclaw plugins install clawhub:@zw008/endpoint-aiops
 openclaw skills info endpoint-aiops          # expect: Visible to model: yes
 ```
 
