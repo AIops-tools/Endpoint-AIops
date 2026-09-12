@@ -58,6 +58,13 @@ endpoint-aiops init       # interactive wizard: connection + encrypted API key
 endpoint-aiops doctor
 ```
 
+Or as an OpenClaw plugin, which installs this skill and its MCP server together:
+
+```bash
+openclaw plugins install clawhub:@aiops-tools/endpoint-aiops
+openclaw skills info endpoint-aiops          # expect: Visible to model: yes
+```
+
 ## When to Use This Skill
 
 - Triage a fleet (`overview`): online/offline counts, stale endpoints, agent/patch spread
