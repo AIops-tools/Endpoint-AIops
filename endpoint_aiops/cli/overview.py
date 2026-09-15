@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 
-from endpoint_aiops.cli._common import TargetOption, cli_errors, console, get_connection
+from endpoint_aiops.cli._common import TargetOption, audited, cli_errors, console, get_connection
 
 
 @cli_errors
+@audited
 def overview_cmd(target: TargetOption = None) -> None:
     """One-shot fleet health: online/offline, stale endpoints, version spread."""
     from endpoint_aiops.ops import inventory as ops

@@ -10,6 +10,7 @@ import typer
 from endpoint_aiops.cli._common import (
     LimitOption,
     TargetOption,
+    audited,
     cli_errors,
     console,
     get_connection,
@@ -29,6 +30,7 @@ SinceOption = Annotated[
 
 @session_app.command("list")
 @cli_errors
+@audited
 def session_list(since_hours: SinceOption = 24, target: TargetOption = None) -> None:
     """List recent login/boot sessions."""
     from endpoint_aiops.ops import sessions as ops
@@ -39,6 +41,7 @@ def session_list(since_hours: SinceOption = 24, target: TargetOption = None) -> 
 
 @session_app.command("storm")
 @cli_errors
+@audited
 def session_storm(
     since_hours: SinceOption = 24,
     window_s: Annotated[float, typer.Option(help="Sliding window (s) for concurrency")] = 300.0,

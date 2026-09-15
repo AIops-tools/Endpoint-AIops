@@ -10,6 +10,7 @@ import typer
 from endpoint_aiops.cli._common import (
     DryRunOption,
     TargetOption,
+    audited,
     checked,
     cli_errors,
     console,
@@ -29,6 +30,7 @@ IdArg = Annotated[str, typer.Argument(help="Endpoint id (from 'endpoint list')")
 
 @endpoint_app.command("list")
 @cli_errors
+@audited
 def endpoint_list(target: TargetOption = None) -> None:
     """List all managed endpoints."""
     from endpoint_aiops.ops import inventory as ops
@@ -39,6 +41,7 @@ def endpoint_list(target: TargetOption = None) -> None:
 
 @endpoint_app.command("get")
 @cli_errors
+@audited
 def endpoint_get(endpoint_id: IdArg, target: TargetOption = None) -> None:
     """Show one managed endpoint by id."""
     from endpoint_aiops.ops import inventory as ops

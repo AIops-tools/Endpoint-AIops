@@ -10,6 +10,7 @@ import typer
 from endpoint_aiops.cli._common import (
     LimitOption,
     TargetOption,
+    audited,
     cli_errors,
     console,
     get_connection,
@@ -25,6 +26,7 @@ drift_app = typer.Typer(
 
 @drift_app.command("report")
 @cli_errors
+@audited
 def drift_report(target: TargetOption = None, limit: LimitOption = 200) -> None:
     """Report endpoints drifted from the fleet-majority baseline."""
     from endpoint_aiops.ops import drift as ops
@@ -38,6 +40,7 @@ def drift_report(target: TargetOption = None, limit: LimitOption = 200) -> None:
 
 @drift_app.command("patch")
 @cli_errors
+@audited
 def drift_patch(
     target_patch: Annotated[
         str | None, typer.Option("--target-patch", help="Desired patch level")
