@@ -130,7 +130,7 @@ def test_real_write_tool_persists_priorstate_undo(gov_home, monkeypatch):
     conn.get.return_value = {"id": "tc01", "hostname": "tc01", "profile_id": "prof-old"}
     conn.post.return_value = {}
 
-    from mcp_server.tools import remediation as gov
+    from endpoint_aiops.mcp_server.tools import remediation as gov
 
     monkeypatch.setattr(gov, "_get_connection", lambda target=None: conn)
     result = gov.endpoint_assign_profile(endpoint_id="tc01", profile_id="prof-new")

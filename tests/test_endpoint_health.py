@@ -130,7 +130,7 @@ def test_empty_input():
 
 @pytest.mark.unit
 def test_tool_is_governed_low_risk_and_runs():
-    from mcp_server.tools import inventory as inv
+    from endpoint_aiops.mcp_server.tools import inventory as inv
 
     fn = inv.endpoint_health_score
     assert getattr(fn, "_is_governed_tool", False) is True

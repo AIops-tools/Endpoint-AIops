@@ -59,7 +59,7 @@ def endpoint_assign_profile(
     dry_run: DryRunOption = False,
 ) -> None:
     """Assign a config profile to an endpoint (reversible; dry-run + confirm)."""
-    from mcp_server.tools import remediation as gov
+    from endpoint_aiops.mcp_server.tools import remediation as gov
 
     if dry_run:
         preview = gov.endpoint_assign_profile(
@@ -94,7 +94,7 @@ def endpoint_reboot(
     dry_run: DryRunOption = False,
 ) -> None:
     """Request an endpoint reboot (no undo; dry-run + confirm)."""
-    from mcp_server.tools import remediation as gov
+    from endpoint_aiops.mcp_server.tools import remediation as gov
 
     if dry_run:
         preview = gov.endpoint_reboot(endpoint_id=endpoint_id, dry_run=True, target=target)

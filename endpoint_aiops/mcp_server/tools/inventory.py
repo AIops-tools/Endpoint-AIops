@@ -3,8 +3,8 @@
 from typing import Any, Optional
 
 from endpoint_aiops.governance import governed_tool
+from endpoint_aiops.mcp_server._shared import _get_connection, mcp, tool_errors
 from endpoint_aiops.ops import inventory as ops
-from mcp_server._shared import _get_connection, mcp, tool_errors
 
 
 @mcp.tool()

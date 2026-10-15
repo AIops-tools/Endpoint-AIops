@@ -9,8 +9,8 @@ is reversible and records an undo descriptor (reassign the prior profile);
 from typing import Any, Optional
 
 from endpoint_aiops.governance import governed_tool
+from endpoint_aiops.mcp_server._shared import _get_connection, mcp, tool_errors
 from endpoint_aiops.ops import remediation as ops
-from mcp_server._shared import _get_connection, mcp, tool_errors
 
 
 def _preview(conn: Any, endpoint_id: str, resource: str) -> dict:

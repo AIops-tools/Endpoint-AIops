@@ -1,7 +1,7 @@
 """CLI confirmed-write path — past dry-run, through governance, onto disk.
 
 The CLI write commands delegate real execution to the ``@governed_tool``
-functions in ``mcp_server.tools``. These tests drive a write command PAST the
+functions in ``endpoint_aiops.mcp_server.tools``. These tests drive a write command PAST the
 dry-run branch and the double-confirm prompts and assert the call really went
 through the governed path (audit row on disk) — the regression test for the
 "CLI writes were unaudited" line-wide fix.
@@ -77,7 +77,7 @@ def test_cli_endpoint_reboot_dry_run_reads_and_audits_but_never_writes(gov_home,
     from endpoint_aiops.cli import app
 
     conn = _mock_conn()
-    import mcp_server.tools.remediation as gov
+    import endpoint_aiops.mcp_server.tools.remediation as gov
 
     monkeypatch.setattr(gov, "_get_connection", lambda target=None: conn)
     result = CliRunner().invoke(app, ["endpoint", "reboot", "tc01", "--dry-run"])
@@ -96,7 +96,7 @@ def test_cli_endpoint_reboot_dry_run_reports_the_real_online_state(gov_home, mon
     conn = _mock_conn()
     conn.get.return_value = {"id": "tc01", "hostname": "tc01", "online": False,
                              "last_seen_hours": 72.5}
-    import mcp_server.tools.remediation as gov
+    import endpoint_aiops.mcp_server.tools.remediation as gov
 
     monkeypatch.setattr(gov, "_get_connection", lambda target=None: conn)
     result = CliRunner().invoke(app, ["endpoint", "reboot", "tc01", "--dry-run"])
@@ -111,7 +111,7 @@ def test_cli_endpoint_reboot_dry_run_records_no_undo_token(gov_home, monkeypatch
     from endpoint_aiops.cli import app
 
     conn = _mock_conn()
-    import mcp_server.tools.remediation as gov
+    import endpoint_aiops.mcp_server.tools.remediation as gov
 
     monkeypatch.setattr(gov, "_get_connection", lambda target=None: conn)
     CliRunner().invoke(app, ["endpoint", "reboot", "tc01", "--dry-run"])
@@ -137,7 +137,7 @@ def test_cli_endpoint_reboot_dry_run_on_a_server_without_reboot_refuses_nonzero(
     from endpoint_aiops.ops import _util
 
     conn = _mock_conn()
-    import mcp_server.tools.remediation as gov
+    import endpoint_aiops.mcp_server.tools.remediation as gov
 
     monkeypatch.setattr(gov, "_get_connection", lambda target=None: conn)
     monkeypatch.setattr(_util, "dialect_of", lambda c: Dialect(name="no-reboot",
@@ -160,7 +160,7 @@ def test_cli_endpoint_assign_profile_dry_run_reads_and_audits_but_never_writes(
     from endpoint_aiops.cli import app
 
     conn = _mock_conn()
-    import mcp_server.tools.remediation as gov
+    import endpoint_aiops.mcp_server.tools.remediation as gov
 
     monkeypatch.setattr(gov, "_get_connection", lambda target=None: conn)
     result = CliRunner().invoke(
@@ -194,7 +194,7 @@ def test_cli_endpoint_reboot_confirmed_goes_through_governance(gov_home, monkeyp
     from endpoint_aiops.cli import app
 
     conn = _mock_conn()
-    import mcp_server.tools.remediation as gov
+    import endpoint_aiops.mcp_server.tools.remediation as gov
 
     monkeypatch.setattr(gov, "_get_connection", lambda target=None: conn)
     result = CliRunner().invoke(app, ["endpoint", "reboot", "tc01"], input="y\ny\n")
@@ -208,7 +208,7 @@ def test_cli_endpoint_reboot_aborts_without_double_confirm(gov_home, monkeypatch
     from endpoint_aiops.cli import app
 
     conn = _mock_conn()
-    import mcp_server.tools.remediation as gov
+    import endpoint_aiops.mcp_server.tools.remediation as gov
 
     monkeypatch.setattr(gov, "_get_connection", lambda target=None: conn)
     result = CliRunner().invoke(app, ["endpoint", "reboot", "tc01"], input="y\nn\n")

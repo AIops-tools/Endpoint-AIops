@@ -84,7 +84,7 @@ def test_patch_compliance_empty_fleet_is_insufficient():
 
 @pytest.mark.unit
 def test_patch_compliance_tool_is_governed_low_and_runs():
-    from mcp_server.tools import drift as tools
+    from endpoint_aiops.mcp_server.tools import drift as tools
 
     fn = tools.patch_compliance
     assert getattr(fn, "_is_governed_tool", False) is True

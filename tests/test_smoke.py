@@ -51,12 +51,12 @@ def test_all_modules_import():
         "endpoint_aiops.cli.drift",
         "endpoint_aiops.cli.overview",
         "endpoint_aiops.cli.doctor",
-        "mcp_server.server",
-        "mcp_server._shared",
-        "mcp_server.tools.inventory",
-        "mcp_server.tools.sessions",
-        "mcp_server.tools.drift",
-        "mcp_server.tools.remediation",
+        "endpoint_aiops.mcp_server.server",
+        "endpoint_aiops.mcp_server._shared",
+        "endpoint_aiops.mcp_server.tools.inventory",
+        "endpoint_aiops.mcp_server.tools.sessions",
+        "endpoint_aiops.mcp_server.tools.drift",
+        "endpoint_aiops.mcp_server.tools.remediation",
     ):
         importlib.import_module(name)
 
@@ -108,7 +108,7 @@ def test_cli_leaf_help_triggers_lazy_imports():
 
 @pytest.mark.unit
 def test_mcp_list_tools_exposes_expected_tools():
-    from mcp_server.server import mcp
+    from endpoint_aiops.mcp_server.server import mcp
 
     tools = asyncio.run(mcp.list_tools())
     names = {t.name for t in tools}
@@ -118,7 +118,7 @@ def test_mcp_list_tools_exposes_expected_tools():
 @pytest.mark.unit
 def test_every_mcp_tool_is_governed_by_harness():
     """Every registered tool callable must carry the @governed_tool marker."""
-    from mcp_server import _shared
+    from endpoint_aiops.mcp_server import _shared
 
     tool_objs = _shared.mcp._tool_manager._tools
     assert EXPECTED_TOOLS <= set(tool_objs), "tool registry incomplete"
@@ -136,7 +136,7 @@ def test_every_mcp_tool_is_governed_by_harness():
 @pytest.mark.unit
 def test_write_tools_have_correct_risk_tiers():
     """Reversible profile change = high; reboot (no undo) = medium."""
-    from mcp_server.tools import remediation as rem
+    from endpoint_aiops.mcp_server.tools import remediation as rem
 
     assert rem.endpoint_assign_profile._risk_level == "high"
     assert rem.endpoint_reboot._risk_level == "medium"
@@ -146,7 +146,7 @@ def test_write_tools_have_correct_risk_tiers():
 def test_assign_profile_records_undo_token_via_harness(monkeypatch):
     """assign_profile through the harness records an inverse (reassign prior)."""
     import endpoint_aiops.governance.undo as undo_mod
-    from mcp_server.tools import remediation as rem
+    from endpoint_aiops.mcp_server.tools import remediation as rem
 
     conn = MagicMock(name="conn")
     conn.get.return_value = {"id": "tc01", "hostname": "tc01", "profile_id": "prof-old"}
@@ -219,7 +219,7 @@ def test_dry_run_gates_destructive_cli(monkeypatch):
     path and fetches the before-state), so a connection is required — but the
     reboot POST must never fire.
     """
-    import mcp_server.tools.remediation as gov
+    import endpoint_aiops.mcp_server.tools.remediation as gov
     from endpoint_aiops.cli import app
 
     conn = MagicMock(name="conn")
@@ -243,7 +243,7 @@ def test_dry_run_without_a_reachable_server_refuses_rather_than_reassures(
     answer is the connection error, not a green banner describing a reboot that
     was never checked against anything.
     """
-    import mcp_server._shared as shared
+    import endpoint_aiops.mcp_server._shared as shared
     from endpoint_aiops.cli import app
 
     monkeypatch.setenv("ENDPOINT_AIOPS_CONFIG", str(tmp_path / "absent.yaml"))
@@ -411,7 +411,7 @@ def test_risk_level_agrees_with_read_write_docstring_tag():
     16 such mislabels line-wide once, so it is kept even though read-only mode
     (its original motivation) is gone.
     """
-    from mcp_server import server
+    from endpoint_aiops.mcp_server import server
 
     untagged, mismatched = [], []
     for name, tool in server.mcp._tool_manager._tools.items():
