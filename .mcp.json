@@ -5,7 +5,7 @@
       "command": "uvx",
       "args": [
         "--from",
-        "endpoint-aiops==0.10.3",
+        "endpoint-aiops==0.11.0",
         "endpoint-aiops-mcp"
       ]
     }
